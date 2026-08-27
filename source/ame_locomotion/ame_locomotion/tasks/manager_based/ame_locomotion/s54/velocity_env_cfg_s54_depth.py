@@ -26,6 +26,10 @@ class KuavoS54DepthSceneCfg(_g1_cfg.MySceneCfg):
     depth_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/waist_yaw_link/depth_camera",
         update_period=0.02,
+        # The camera is rigidly attached to the robot.  Keep its world pose in
+        # sync with each rendered depth image so consumers that unproject the
+        # image (e.g. attention visualization) use the current camera pose.
+        update_latest_camera_pose=True,
         height=42,
         width=42,
         data_types=["distance_to_image_plane"],

@@ -67,7 +67,6 @@ import torch
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 import isaaclab.sim as sim_utils
 from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
-from isaaclab.utils.math import quat_apply
 from typing import Optional
 
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
@@ -238,7 +237,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             prim_path="/Visuals/attention",
             markers=markers,
         )
-        identity_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=device)
+        # Isaac Lab uses scalar-first quaternions: (w, x, y, z).
+        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device)
         return VisualizationMarkers(cfg)
 
     def _vis_attention_on_terrain(attn: torch.Tensor, env):
@@ -269,19 +269,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     raise ValueError(f"Expected a 2D depth image, got shape {tuple(depth.shape)}")
 
                 image_height, image_width = depth.shape
-                # First unproject into the ROS camera frame, then explicitly
-                # transform every point to world coordinates.  Passing the
-                # camera pose directly to create_pointcloud_from_depth leaves
-                # the frame conversion implicit; with an OpenGL-configured
-                # camera that can make markers appear on a fixed z plane.
-                camera_points = create_pointcloud_from_depth(
+                # ``quat_w_ros`` is the world orientation in the same ROS
+                # optical convention used by the depth unprojection utility.
+                # The camera config enables ``update_latest_camera_pose``, so
+                # this transform follows the robot on every sensor update.
+                ray_hits = create_pointcloud_from_depth(
                     depth_camera.data.intrinsic_matrices[0],
                     depth,
                     keep_invalid=True,
+                    position=depth_camera.data.pos_w[0],
+                    orientation=depth_camera.data.quat_w_ros[0],
                     device=depth.device,
                 )
-                camera_quat_w_ros = depth_camera.data.quat_w_ros[0].expand(camera_points.shape[0], -1)
-                ray_hits = quat_apply(camera_quat_w_ros, camera_points) + depth_camera.data.pos_w[0]
                 # Isaac Lab's unprojection is ordered width-first; convert it to
                 # the row-major image order used by the CNN and its attention.
                 ray_hits = ray_hits.reshape(image_width, image_height, 3).permute(1, 0, 2).reshape(-1, 3)

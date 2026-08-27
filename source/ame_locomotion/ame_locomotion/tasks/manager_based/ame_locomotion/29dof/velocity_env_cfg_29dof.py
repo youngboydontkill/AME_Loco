@@ -638,13 +638,13 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #     proportion=0.5, stake_height_max=0.0, stake_side_range=(0.2, 0.2), stake_gap_range=(0.3, 0.3),
                 #     column_gap_range=(0.3, 0.3), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
                 # ),
-                "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-                            proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
-                            ground_width_range=(0.5, 0.5), ground_height_max=0.0
-                ),
-                # "rails": terrain_gen.MeshRailsTerrainCfg(
-                #     proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
+                # "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
+                #             proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
+                #             ground_width_range=(0.5, 0.5), ground_height_max=0.0
                 # ),
+                "rails": terrain_gen.MeshRailsTerrainCfg(
+                    proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
+                ),
             }
 
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
