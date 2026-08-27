@@ -72,3 +72,5 @@ tests/
 
 attn_vis/
 attention_weights.npy
+
+isaac_lab23/*

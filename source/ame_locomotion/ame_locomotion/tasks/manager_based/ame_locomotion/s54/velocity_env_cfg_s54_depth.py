@@ -83,6 +83,13 @@ class KuavoS54DepthRoughEnvCfg(s54_cfg.KuavoS54RoughEnvCfg):
         # Bootstrap the more complex visual policy on the lowest terrain row.
         # Successful environments will still advance through the normal curriculum.
         self.scene.terrain.max_init_terrain_level = 0
+        # Do not inject destabilizing reset velocities while the visual policy
+        # is learning basic locomotion from level-zero terrain.
+        self.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+        self.events.push_robot = None
+        # A wider kernel gives a useful gradient when the initial policy has
+        # large velocity error; this matches the successful S54 depth run.
+        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
 
 
 @configclass

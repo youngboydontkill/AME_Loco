@@ -75,8 +75,6 @@ def _apply_s54_name_mapping(cfg) -> None:
         body_names=[
             "base_link",
             "waist_yaw_link",
-            "leg_[lr][1-4]_link",
-            "zarm_[lr][1-4]_link",
         ],
     )
 

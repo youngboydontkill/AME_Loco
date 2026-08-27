@@ -419,6 +419,9 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
+    # Keep the diagnostics before the update term so they describe the state
+    # that caused the reset, rather than the newly assigned terrain origin.
+    terrain_progress_diagnostics = CurrTerm(func=mdp.terrain_progress_diagnostics)
     terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
 
@@ -438,7 +441,7 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
-    scene: MySceneCfg = MySceneCfg(num_envs=2048, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(num_envs=1024, env_spacing=2.5)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

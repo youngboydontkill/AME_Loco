@@ -213,3 +213,8 @@ Our implementation mostly follows the paper design, with three small adjustments
 - Training script: [run_train.sh](run_train.sh)
 - Play script: [run_play.sh](run_play.sh)
 - Pretrained folder: [pretrained/](pretrained/)
+
+## Log
+### 8.24
+发现了depth-ame训练terrain level一直上不去的原因：训练轮次不够——5080 env 512 训练到3w轮左右才开始疯狂上涨——怀疑原因是gap地形没有历史帧depth导致看不见落足地。当前的设置应该没有问题。发现了depth-attention可视化的问题：只能在一个高度进行可视化。
+并且  
