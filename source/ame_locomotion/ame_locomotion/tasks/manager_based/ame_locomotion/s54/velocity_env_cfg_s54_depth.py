@@ -1,5 +1,6 @@
 """Kuavo S54 AME task with a 42x42 depth-camera observation."""
 
+import copy
 import importlib
 
 import isaaclab.sim as sim_utils
@@ -17,6 +18,28 @@ from . import velocity_env_cfg_s54 as s54_cfg
 _g1_cfg = importlib.import_module(
     "ame_locomotion.tasks.manager_based.ame_locomotion.29dof.velocity_env_cfg_29dof"
 )
+
+
+def _make_easier_depth_terrain(terrain_generator):
+    """Reduce obstacle severity while preserving the terrain mix."""
+    terrain_generator = copy.deepcopy(terrain_generator)
+    sub_terrains = terrain_generator.sub_terrains
+
+    sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.12)
+    sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.12)
+    sub_terrains["boxes"].grid_width = 0.35
+    sub_terrains["boxes"].grid_height_range = (0.03, 0.12)
+    sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    sub_terrains["hf_pyramid_slope"].slope_range = (0.0, 0.25)
+    sub_terrains["hf_pyramid_slope_inv"].slope_range = (0.0, 0.25)
+    sub_terrains["hf_steppingstones"].stone_width_range = (0.35, 0.60)
+    sub_terrains["hf_steppingstones"].stone_distance_range = (0.03, 0.15)
+    sub_terrains["hf_steppingstones"].holes_depth = -1.0
+    sub_terrains["hf_gaps"].gap_width_range = (0.06, 0.25)
+    sub_terrains["hf_gaps"].ground_width_range = (0.60, 0.60)
+    sub_terrains["hf_gaps"].gap_depth = -1.0
+
+    return terrain_generator
 
 
 @configclass
@@ -80,6 +103,9 @@ class KuavoS54DepthRoughEnvCfg(s54_cfg.KuavoS54RoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.height_scanner = None
+        self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
+            self.scene.terrain.terrain_generator
+        )
         # Bootstrap the more complex visual policy on the lowest terrain row.
         # Successful environments will still advance through the normal curriculum.
         self.scene.terrain.max_init_terrain_level = 0

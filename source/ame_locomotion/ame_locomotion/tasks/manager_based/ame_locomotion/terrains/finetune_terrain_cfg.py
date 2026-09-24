@@ -37,25 +37,27 @@ FINETUNE_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             border_width=1.0,
             holes=False,
         ),
+        # 两列方形柱桩（ column_gap_range=0.1表示两列没有交错）
+        # ！ 这个holes_depth 感觉像是他区分与其他算法的原因！
         "stakes1": terrain_gen.HfDoubleColumnStakesTerrainCfg(
-            proportion=0.1, stake_height_max=0.03, stake_side_range=(0.20, 0.40), stake_gap_range=(0.1, 0.3),
+            proportion=0.1, stake_height_max=0.03, stake_side_range=(0.30, 0.40), stake_gap_range=(0.1, 0.3),
             column_gap_range=(0.1, 0.1), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
         ),
         "stakes2": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-            proportion=0.2, stake_height_max=0.03, stake_side_range=(0.20, 0.40), stake_gap_range=(0.05, 0.15),
+            proportion=0.2, stake_height_max=0.03, stake_side_range=(0.30, 0.40), stake_gap_range=(0.05, 0.15),
             column_gap_range=(0.0, 0.2), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
         ),
         "stakes3": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-            proportion=0.2, stake_height_max=0.03, stake_side_range=(0.20, 0.40), stake_gap_range=(0.05, 0.25),
+            proportion=0.2, stake_height_max=0.03, stake_side_range=(0.30, 0.40), stake_gap_range=(0.05, 0.25),
             column_gap_range=(0.3, 0.2), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
         ),
         "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-            proportion=0.1, gap_width_range=(0.2, 0.6), platform_width=2.0, border_width=0.25, gap_depth=-2.0,
+            proportion=0.1, gap_width_range=(0.12, 0.24), platform_width=2.0, border_width=0.25, gap_depth=-2.0,
             ground_width_range=(0.5, 0.5), ground_height_max=0.03
         ),
         "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
             proportion=0.1, platform_width=2.0, border_width=0.25, holes_depth=-2.0,
-            stone_height_max=0.03, stone_width_range=(0.25, 0.35), stone_distance_range=(0.3, 0.5),
+            stone_height_max=0.03, stone_width_range=(0.35, 0.45), stone_distance_range=(0.3, 0.5),
             stone_length_range=(0.6, 1.0), stone_lateral_distance_range=(0.0, 0.0)
         ),
         "rails": terrain_gen.MeshRailsTerrainCfg(
