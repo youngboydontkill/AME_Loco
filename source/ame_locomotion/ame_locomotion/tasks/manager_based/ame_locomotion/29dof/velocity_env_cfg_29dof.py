@@ -638,9 +638,20 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #     proportion=0.5, stake_height_max=0.0, stake_side_range=(0.2, 0.2), stake_gap_range=(0.3, 0.3),
                 #     column_gap_range=(0.3, 0.3), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
                 # ),
+                "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+                            proportion=0.3, stone_height_max=0.05,
+                            stone_width_range=(0.35, 0.60), stone_distance_range=(0.03, 0.15),
+                            platform_width=2.0, holes_depth=-1.0, border_width=0.25
+                ),
+                "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
+                            proportion=0.3, platform_width=2.0, border_width=0.25, holes_depth=-1.0,
+                            stone_height_max=0.03, stone_width_range=(0.35, 0.60),
+                            stone_distance_range=(0.03, 0.15), stone_length_range=(0.60, 1.00),
+                            stone_lateral_distance_range=(0.0, 0.0)
+                ),
                 "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-                            proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
-                            ground_width_range=(0.5, 0.5), ground_height_max=0.0
+                            proportion=0.4, gap_width_range=(0.06, 0.25), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
+                            ground_width_range=(0.60, 0.60), ground_height_max=0.025
                 ),
                 # "rails": terrain_gen.MeshRailsTerrainCfg(
                 #     proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0

@@ -162,6 +162,7 @@ class ActorCriticEncoder(nn.Module):
 
         map_image = map_scan.permute(0, 3, 1, 2)
         cnn_features = self.map_cnn(map_image)
+        cnn_height, cnn_width = cnn_features.shape[-2:]
         if not self.cnn_downsample:
             cnn_features = cnn_features.permute(0, 2, 3, 1).reshape(-1, self.L * self.W, self.cnn_output_dim)
         else:
@@ -176,7 +177,13 @@ class ActorCriticEncoder(nn.Module):
         #     # Downsample coordinates to match downsampled CNN grid
         #     coords = map_scan[:, ::2, ::2, :].reshape(-1, (self.L // 2 + 1) * (self.W // 2 + 1), self.coord_dim)
         #     local_features = torch.cat([cnn_features, coords], dim=-1)  # [batch, L'*W', mha_dim]
-        local_features = cnn_features  # Current setting: use CNN features only as local features
+        # CNN features alone do not explicitly identify a pixel location. Add a
+        # deterministic 2-D sinusoidal encoding so attention can distinguish
+        # forward/side regions without adding checkpoint parameters.
+        position = self._spatial_position_encoding(
+            cnn_height, cnn_width, cnn_features.device, cnn_features.dtype
+        )
+        local_features = cnn_features + position.unsqueeze(0)
         
         # Extract proprioceptive features (all non-map terms)
         proprio_obs = obs[:, :-self.L * self.W * self.coord_dim]
@@ -201,6 +208,7 @@ class ActorCriticEncoder(nn.Module):
             query=proprio_embedding,
             key=local_features,
             value=local_features,
+            average_attn_weights=False,
         )
 
         mha_output = mha_output.squeeze(1)
@@ -212,6 +220,20 @@ class ActorCriticEncoder(nn.Module):
             print(f"Warning: encoded_obs contains NaN or Inf: {encoded_obs}")
 
         return encoded_obs, attention_weights
+
+    def _spatial_position_encoding(self, height, width, device, dtype):
+        """Create a parameter-free 2-D sinusoidal encoding for CNN tokens."""
+        dim = self.cnn_output_dim
+        y = torch.linspace(-1.0, 1.0, height, device=device, dtype=dtype)
+        x = torch.linspace(-1.0, 1.0, width, device=device, dtype=dtype)
+        yy, xx = torch.meshgrid(y, x, indexing="ij")
+        coords = torch.stack((xx, yy), dim=-1).reshape(-1, 2)
+        channels = torch.arange(dim, device=device, dtype=dtype)
+        frequencies = torch.pow(10000.0, -2.0 * torch.floor(channels / 2.0) / max(1, dim))
+        encoding = torch.empty((height * width, dim), device=device, dtype=dtype)
+        encoding[:, 0::2] = torch.sin(coords[:, 0:1] * frequencies[0::2])
+        encoding[:, 1::2] = torch.cos(coords[:, 1:2] * frequencies[1::2])
+        return encoding
 
     def reset(self, dones=None):
         pass

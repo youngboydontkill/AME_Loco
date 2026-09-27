@@ -11,6 +11,9 @@ from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 
 from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
+from ame_locomotion.tasks.manager_based.ame_locomotion.terrains.loco_hf_terrains_cfg import (
+    HfStonesBridgeTerrainCfg,
+)
 
 from . import velocity_env_cfg_s54 as s54_cfg
 
@@ -39,6 +42,23 @@ def _make_easier_depth_terrain(terrain_generator):
     sub_terrains["hf_gaps"].ground_width_range = (0.60, 0.60)
     sub_terrains["hf_gaps"].gap_depth = -1.0
 
+    # Reserve part of the training distribution for the bridge terrain. This
+    # is scoped to depth training instead of changing other locomotion tasks.
+    sub_terrains["random_rough"].proportion = 0.05
+    sub_terrains["hf_pyramid_slope"].proportion = 0.05
+    sub_terrains["hf_pyramid_slope_inv"].proportion = 0.05
+    sub_terrains["stonebridge"] = HfStonesBridgeTerrainCfg(
+        proportion=0.15,
+        stone_height_max=0.03,
+        stone_width_range=(0.35, 0.60),
+        stone_length_range=(0.60, 1.00),
+        stone_distance_range=(0.03, 0.15),
+        stone_lateral_distance_range=(0.0, 0.0),
+        holes_depth=-1.0,
+        platform_width=2.0,
+        border_width=0.25,
+    )
+
     return terrain_generator
 
 
@@ -49,6 +69,9 @@ class KuavoS54DepthSceneCfg(_g1_cfg.MySceneCfg):
     depth_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/waist_yaw_link/depth_camera",
         update_period=0.02,
+        # Keep the pose synchronized with the rendered frame. This is required
+        # when depth pixels are unprojected for attention diagnostics.
+        update_latest_camera_pose=True,
         height=42,
         width=42,
         data_types=["distance_to_image_plane"],
@@ -128,3 +151,6 @@ class KuavoS54DepthRoughEnvCfg_PLAY(s54_cfg.KuavoS54RoughEnvCfg_PLAY):
     def __post_init__(self):
         super().__post_init__()
         self.scene.height_scanner = None
+        self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
+            self.scene.terrain.terrain_generator
+        )

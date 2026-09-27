@@ -223,8 +223,9 @@ def concentric_gap_terrain(difficulty: float, cfg: loco_hf_terrains_cfg.HfConcen
     Generate concentric gap terrain with a center platform.
     Gap width is difficulty-dependent and gap depth is fixed.
     """
-    # Gap depth in pixels
-    gap_depth = int(2.0 / cfg.vertical_scale)
+    # Gap depth in pixels. Respect the task config instead of silently using a
+    # fixed depth, otherwise train/play terrain parameters do not match.
+    gap_depth = int(abs(cfg.gap_depth) / cfg.vertical_scale)
     # Gap width varies with difficulty
     gap_width = cfg.gap_width_range[0] + difficulty * (cfg.gap_width_range[1] - cfg.gap_width_range[0])
     gap_width = int(gap_width / cfg.horizontal_scale)

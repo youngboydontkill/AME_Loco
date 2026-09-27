@@ -291,8 +291,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     print("[WARN] Attention visualization requires a height_scanner or depth_camera sensor")
                 return
 
-            # Attention weights from env 0 [N_attn]
-            attn0 = attn[0, 0]
+            # Attention weights from env 0. The encoder returns per-head
+            # weights [B, heads, 1, tokens]; average heads for terrain markers.
+            if attn.ndim == 4:
+                attn0 = attn[0].mean(dim=0)[0]
+            elif attn.ndim == 3:
+                attn0 = attn[0, 0]
+            else:
+                raise ValueError(f"Unexpected attention shape: {tuple(attn.shape)}")
             n_attn = int(attn0.shape[0])
             n_rays = int(ray_hits.shape[0])
 

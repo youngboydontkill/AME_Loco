@@ -3,12 +3,10 @@ import matplotlib.pyplot as plt
 import os
 from rsl_rl.utils import PROJ_ROOT_DIR
 
-# Load attention weights
-attn_weights = np.load(os.path.join(PROJ_ROOT_DIR, 'attention_weights.npy'))  # (200, 1, 1, 187)
+# Load attention weights. The depth encoder produces 21x21 tokens from a 42x42
+# image when cnn_downsample=True; infer the grid from the saved token count.
+attn_weights = np.load(os.path.join(PROJ_ROOT_DIR, 'attention_weights.npy'))
 steps = attn_weights.shape[0]
-
-# Map size: 17x11
-map_h, map_w = 17, 11
 
 # Create output folder
 save_dir = os.path.join(PROJ_ROOT_DIR, 'attn_vis')
@@ -26,6 +24,12 @@ elif len(attn_weights.shape) == 4:     # Averaged shape: (steps, batch, tgt_len,
     attn_weights = np.expand_dims(attn_weights, axis=2)
 else:
     raise ValueError(f"Unknown attention_weights shape: {attn_weights.shape}")
+
+num_tokens = attn_weights.shape[-1]
+map_h = int(round(np.sqrt(num_tokens)))
+map_w = map_h
+if map_h * map_w != num_tokens:
+    raise ValueError(f"Attention source length {num_tokens} is not a square grid")
 
 import math
 cols = min(4, num_heads)
@@ -45,8 +49,9 @@ for t in range(steps):
         ax = axes[r, c]
         
         # Extract env-0 data for head h
-        vec = attn_weights[t, 0, h, 0][::-1]   # Reverse to match map orientation
-        attn_map = vec.reshape(map_h, map_w, order='F')  # Column-major reshape
+        vec = attn_weights[t, 0, h, 0]
+        # Encoder tokens are row-major after NCHW -> NHWC flattening.
+        attn_map = vec.reshape(map_h, map_w)
         
         im = ax.imshow(
             attn_map, 
