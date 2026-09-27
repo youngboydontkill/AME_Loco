@@ -101,6 +101,7 @@ from isaaclab.utils.dict import print_dict
 from isaaclab.utils.io import dump_yaml  # dump_pickle is unavailable in some Isaac Lab versions.
 
 from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+from isaaclab.utils.assets import retrieve_file_path
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
@@ -169,8 +170,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
 
+    # Resolve a teacher independently from the student/resume checkpoint.
+    teacher_path = getattr(agent_cfg, "teacher_checkpoint", None)
+    if agent_cfg.algorithm.class_name == "Distillation" and teacher_path:
+        teacher_path = retrieve_file_path(teacher_path)
+
     # save resume path before creating a new log_dir
-    if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+    if agent_cfg.resume or (agent_cfg.algorithm.class_name == "Distillation" and not teacher_path):
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     # wrap for video recording
@@ -197,10 +203,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
-    # load the checkpoint
-    if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
+    # Load either an explicit teacher checkpoint or a distillation resume checkpoint.
+    if agent_cfg.algorithm.class_name == "Distillation":
+        load_path = teacher_path or resume_path
+        print(f"[INFO]: Loading distillation checkpoint from: {load_path}")
+        runner.load(load_path, load_optimizer=teacher_path is None)
+    elif agent_cfg.resume:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-        # load previously trained model
         runner.load(resume_path)
 
     # dump the configuration into log-directory

@@ -20,8 +20,8 @@ class KuavoS54DepthAMEPPORunnerCfg(KuavoS54AMEPPORunnerCfg):
     """PPO settings for AME-Kuavo-S54-Depth-v0."""
 
     experiment_name = "kuavo_s54_depth_ame"
-    max_iterations = 40000
-    save_interval = 1000
+    max_iterations = 80000
+    save_interval = 2000
 
     policy = KuavoS54DepthActorCriticCfg(
         init_noise_std=1.0,
