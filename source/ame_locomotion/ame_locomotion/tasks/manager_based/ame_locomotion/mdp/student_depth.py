@@ -121,6 +121,24 @@ def student_depth_image(
     maximum sensor depth before enhancement.
     """
     camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+
+    # The observation manager evaluates the policy and critic groups one after
+    # another. They consume the same rendered frame, so reuse the frozen
+    # Student result for both groups instead of running the CNN twice. The
+    # manager's common step counter is a Python integer and avoids synchronizing
+    # a CUDA frame counter just to decide whether a cache entry is current.
+    cache_key = (
+        getattr(env, "common_step_counter", None),
+        sensor_cfg.name,
+        checkpoint_path,
+        min_depth,
+        max_depth,
+        sensor_valid_max,
+    )
+    cache = getattr(env, "_ame_student_depth_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache["value"]
+
     depth = camera.data.output["distance_to_image_plane"]
     if depth.ndim == 4 and depth.shape[-1] == 1:
         depth = depth[..., 0]
@@ -136,4 +154,6 @@ def student_depth_image(
         enhanced = _load_student(env, checkpoint_path)(sim_depth)
     enhanced = enhanced[:, 0].clamp(min=min_depth, max=max_depth)
     normalized = 2.0 * (enhanced - 0.0) / max_depth - 1.0
-    return normalized.reshape(normalized.shape[0], -1)
+    normalized = normalized.reshape(normalized.shape[0], -1)
+    env._ame_student_depth_cache = {"key": cache_key, "value": normalized}
+    return normalized

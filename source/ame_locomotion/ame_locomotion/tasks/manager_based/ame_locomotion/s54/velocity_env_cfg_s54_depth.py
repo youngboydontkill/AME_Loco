@@ -69,9 +69,11 @@ class KuavoS54DepthSceneCfg(_g1_cfg.MySceneCfg):
     depth_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/waist_yaw_link/depth_camera",
         update_period=0.02,
-        # Keep the pose synchronized with the rendered frame. This is required
-        # when depth pixels are unprojected for attention diagnostics.
-        update_latest_camera_pose=True,
+        # Pose refresh performs an extra transform update for every camera on
+        # every render. Training only consumes depth pixels, so keep it off in
+        # the shared scene config. The PLAY config enables it below for tools
+        # that unproject depth pixels into world coordinates.
+        update_latest_camera_pose=False,
         height=42,
         width=42,
         data_types=["distance_to_image_plane"],
@@ -154,3 +156,4 @@ class KuavoS54DepthRoughEnvCfg_PLAY(s54_cfg.KuavoS54RoughEnvCfg_PLAY):
         self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
             self.scene.terrain.terrain_generator
         )
+        self.scene.depth_camera.update_latest_camera_pose = True
