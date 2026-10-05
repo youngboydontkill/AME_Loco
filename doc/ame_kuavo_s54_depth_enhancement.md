@@ -17,7 +17,9 @@ Isaac distance_to_image_plane [N, 42, 42]
 
 ## Checkpoint
 
-默认使用仓库内的 `pretrained/student_depth_latest.pt`。也可以在启动前覆盖：
+默认使用仓库内的 `pretrained/student_depth_stage2_combined.pt`。该文件由
+`stable-sim2real/checkpoints/student_stage2_combined/latest.pt` 导出，使用
+`gemini_stage2_combined` 的 Stage-II teacher 蒸馏得到。也可以在启动前覆盖：
 
 ```bash
 export AME_STUDENT_CHECKPOINT=/absolute/path/to/student/latest.pt
@@ -30,9 +32,13 @@ checkpoint 应包含当前 stable-sim2real Student 的 `model_state_dict`，输�
 ```bash
 python scripts/rsl_rl/train.py \
   --task AME-Kuavo-S54-Depth-enhancement \
-  --num_envs 512 \
+  --num_envs 64 \
+  --enable_cameras \
   --headless
 ```
+
+`run_train.sh` 使用同样的 64 个环境。该设置适配当前 16GB 显存的 RTX 5080；增大
+`num_envs` 会显著增加相机和 PPO rollout 的显存占用。
 
 Playback 使用：
 
@@ -46,4 +52,4 @@ python scripts/rsl_rl/play.py \
 
 原始 `depth_image` 使用线性 `0..5m -> -1..1` 归一化。增强任务保持这个输出契约，避免改变现有 `map_scan_dim=(42,42,1)` 与 Actor-Critic 输入维度。Student 内部使用米制输入；无效/NaN/Inf 相机像素按训练约定置为 `4.9m` 后再推理。
 
-`pretrained/student_depth_latest.pt` 是从 stable-sim2real 当前 Student checkpoint 迁移的权重。它是推理预处理器，不是 RSL-RL 的 policy checkpoint；两者需要分别管理。
+`pretrained/student_depth_stage2_combined.pt` 是从 stable-sim2real 当前 Student checkpoint 迁移的权重。它是推理预处理器，不是 RSL-RL 的 policy checkpoint；两者需要分别管理。

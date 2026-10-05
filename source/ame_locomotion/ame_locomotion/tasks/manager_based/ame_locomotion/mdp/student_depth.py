@@ -16,7 +16,12 @@ from isaaclab.sensors import TiledCamera
 
 _REPO_ROOT = Path(__file__).resolve().parents[7]
 DEFAULT_STUDENT_CHECKPOINT = str(
-    Path(os.environ.get("AME_STUDENT_CHECKPOINT", _REPO_ROOT / "pretrained/student_depth_latest.pt"))
+    Path(
+        os.environ.get(
+            "AME_STUDENT_CHECKPOINT",
+            _REPO_ROOT / "pretrained/student_depth_stage2_combined.pt",
+        )
+    )
 )
 
 

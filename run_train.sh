@@ -1,9 +1,7 @@
 #!/bin/bash
 python scripts/rsl_rl/train.py \
---task AME-G1-29DOF-v0 \
+--task AME-Kuavo-S54-Depth-enhancement \
+--num_envs 64 \
 --max_iterations 15000 \
---headless \
-# --run_name  \
-# --resume \
-# --load_run  \
-# --checkpoint  \
+--enable_cameras \
+--headless
