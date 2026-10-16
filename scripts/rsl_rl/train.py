@@ -8,7 +8,12 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import os
 import sys
+
+# Prefer IsaacSim's C++ runtime when this script is run from a conda env.
+if os.environ.get("CONDA_PREFIX"):
+    os.environ["LD_LIBRARY_PATH"] = os.environ["CONDA_PREFIX"] + ":" + os.environ.get("LD_LIBRARY_PATH", "")
 
 from isaaclab.app import AppLauncher
 
@@ -83,7 +88,6 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 """Rest everything follows."""
 
 import gymnasium as gym
-import os
 import torch
 from datetime import datetime
 
