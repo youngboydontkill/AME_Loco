@@ -1,13 +1,13 @@
 # AME-Kuavo-S54-Depth-enhancement
 
-该任务在 `AME-Kuavo-S54-Depth` 的 Isaac Lab 环境上，将相机的理想仿真深度先经过 Stable-Sim2Real Student，再交给原有 AME policy。机器人、相机、地形、奖励和动作空间保持不变，只有 policy/critic 的 `depth_image` 观测被替换。
+该任务在 `AME-Kuavo-S54-Depth` 的 Isaac Lab 环境上，将相机的理想仿真深度先经过 Stable-Sim2Real Student，再交给原有 AME policy。机器人、相机、地形、奖励和动作空间保持不变，policy/critic 的原单通道 `depth_image` map 扩展为增强深度与 confidence 两通道。
 
 ```text
 Isaac distance_to_image_plane [N, 42, 42]
     -> invalid depth sanitization (metres)
-    -> frozen StudentNetwork (16 channels, 4 residual blocks)
-    -> linear normalization to [-1, 1]
-    -> existing ActorCriticEncoder
+    -> frozen StudentNetwork (32 channels, 6 residual blocks, depth + valid-mask input)
+    -> [enhanced depth in [-1, 1], validity-limited confidence in [0, 1]]
+    -> two-channel existing ActorCriticEncoder
 ```
 
 ## Task names
@@ -17,15 +17,15 @@ Isaac distance_to_image_plane [N, 42, 42]
 
 ## Checkpoint
 
-默认使用仓库内的 `pretrained/student_depth_stage2_combined.pt`。该文件由
-`stable-sim2real/checkpoints/student_stage2_combined/latest.pt` 导出，使用
-`gemini_stage2_combined` 的 Stage-II teacher 蒸馏得到。也可以在启动前覆盖：
+默认使用仓库内的 `pretrained/student_depth_gemini_combined_20261005.pt`。该模型由
+`student_data/gemini_stage2_combined` 的 2,161 个 scene 蒸馏训练，输入是
+`[B, 2, 42, 42]` 的米制深度和相机有效掩码。旧的 confidence checkpoint 仍可通过环境变量显式指定：
 
 ```bash
 export AME_STUDENT_CHECKPOINT=/absolute/path/to/student/latest.pt
 ```
 
-checkpoint 应包含当前 stable-sim2real Student 的 `model_state_dict`，输入是 `[B, 1, 42, 42]` 的米制深度。Student 在环境初始化后的第一次观测调用时加载到 `env.device`，之后保持 eval/frozen 状态，不参与 PPO 反向传播。
+checkpoint 包含冻结 Student 的 `model_state_dict` 和 architecture 元数据。Student 在环境初始化后的第一次观测调用时加载到 `env.device`，之后保持 eval/frozen 状态，不参与 PPO 反向传播。加载器也能从 state dict 推断并加载旧架构。
 
 ## Training
 
@@ -48,8 +48,26 @@ python scripts/rsl_rl/play.py \
   --checkpoint /absolute/path/to/model_*.pt
 ```
 
-## Important contract
+## Observation contract
 
-原始 `depth_image` 使用线性 `0..5m -> -1..1` 归一化。增强任务保持这个输出契约，避免改变现有 `map_scan_dim=(42,42,1)` 与 Actor-Critic 输入维度。Student 内部使用米制输入；无效/NaN/Inf 相机像素按训练约定置为 `4.9m` 后再推理。
+增强任务的 map observation 由一个 term 输出 `[N, 42*42*2]`。每个像素的两个相邻值依次为增强深度和 confidence，reshape 后对应 `[42,42,2]`，ActorCriticEncoder 使用 `map_scan_dim=(42,42,2)`。增强深度线性归一化到 `[-1,1]`，confidence 保持 `[0,1]`，并限制为 Student confidence 与相机有效掩码的逐像素最小值。Actor 与 Critic 共用该传感器观测；Student 内部使用米制输入，无效/NaN/Inf 相机像素按训练约定置为 `4.9m` 后推理，同时将有效掩码作为第二输入通道。
 
-`pretrained/student_depth_stage2_combined.pt` 是从 stable-sim2real 当前 Student checkpoint 迁移的权重。它是推理预处理器，不是 RSL-RL 的 policy checkpoint；两者需要分别管理。
+`mdp.student_depth_image` 仍返回旧的单通道深度格式，供采集与可视化工具使用。该 enhancement task 使用 `mdp.student_depth_confidence_image`，使旧工具和既有 depth-only task 保持原有接口。
+
+带 confidence 的增强任务改变了 map observation 维度，策略网络形状与旧单通道 checkpoint 不兼容。开始带置信度策略训练时应新建 run，不要对旧 depth-only 策略 checkpoint 执行 resume。
+
+`pretrained/student_depth_gemini_combined_20261005.pt` 是深度 Student 推理 checkpoint，不是 RSL-RL 的 policy checkpoint；两者需要分别管理。Gemini combined 训练集中的 confidence 监督 mask 全为有效，因此该 head 的有效像素输出未经校准；部署时 confidence 通道能表达相机已知的 invalid mask，但不能解释为深度误差方差。
+
+几何头对照任务 `AME-Kuavo-S54-Depth-geometry-enhancement` 使用相同 Student checkpoint，map channels 为 `[depth, confidence, edge, foothold]`，对应 `map_scan_dim=(42,42,4)`；其 playback 任务名加 `-Play`。当前 combined 数据没有几何标签，所以 edge/foothold 只作为未校准的输出接口，不能解释为几何性能收益。
+
+## Privileged Student variant
+
+`AME-Kuavo-S54-Depth-enhancement-privileged` 保留增强深度给 Actor，同时把 Student 的
+`[depth, validity, confidence, edge, foothold]` 五通道输出给 Critic。Actor 使用
+`actor_map_scan_dim=(42,42,1)`，Critic 使用 `critic_map_scan_dim=(42,42,5)`；对应的 playback
+任务名加 `-Play`。该任务使用非对称 Actor/Critic 编码器，Critic 的辅助图只用于价值估计。
+
+所有使用 Student observation 的训练任务默认按并行环境独立注入 20% 的随机化原始仿真深度，
+其余环境使用 Student 增强结果。随机化包括高斯深度噪声和像素 dropout；当 Critic 处于原始深度
+分支时，辅助先验通道置零以保持固定输入形状。比例可通过 observation term 的
+`raw_depth_probability` 参数调整。

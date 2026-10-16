@@ -28,36 +28,49 @@ def _make_easier_depth_terrain(terrain_generator):
     terrain_generator = copy.deepcopy(terrain_generator)
     sub_terrains = terrain_generator.sub_terrains
 
-    sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.12)
-    sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.12)
-    sub_terrains["boxes"].grid_width = 0.35
-    sub_terrains["boxes"].grid_height_range = (0.03, 0.12)
-    sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-    sub_terrains["hf_pyramid_slope"].slope_range = (0.0, 0.25)
-    sub_terrains["hf_pyramid_slope_inv"].slope_range = (0.0, 0.25)
-    sub_terrains["hf_steppingstones"].stone_width_range = (0.35, 0.60)
-    sub_terrains["hf_steppingstones"].stone_distance_range = (0.03, 0.15)
-    sub_terrains["hf_steppingstones"].holes_depth = -1.0
-    sub_terrains["hf_gaps"].gap_width_range = (0.06, 0.25)
-    sub_terrains["hf_gaps"].ground_width_range = (0.60, 0.60)
-    sub_terrains["hf_gaps"].gap_depth = -1.0
+    # Training and PLAY configurations intentionally use different terrain
+    # subsets. Apply the common adjustments only when the corresponding
+    # terrain exists so that PLAY can keep its compact terrain mix.
+    if "pyramid_stairs" in sub_terrains:
+        sub_terrains["pyramid_stairs"].step_height_range = (0.03, 0.12)
+    if "pyramid_stairs_inv" in sub_terrains:
+        sub_terrains["pyramid_stairs_inv"].step_height_range = (0.03, 0.12)
+    if "boxes" in sub_terrains:
+        sub_terrains["boxes"].grid_width = 0.35
+        sub_terrains["boxes"].grid_height_range = (0.03, 0.12)
+    if "random_rough" in sub_terrains:
+        sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+    for name in ("hf_pyramid_slope", "hf_pyramid_slope_inv"):
+        if name in sub_terrains:
+            sub_terrains[name].slope_range = (0.0, 0.25)
+    if "hf_steppingstones" in sub_terrains:
+        sub_terrains["hf_steppingstones"].stone_width_range = (0.35, 0.60)
+        sub_terrains["hf_steppingstones"].stone_distance_range = (0.03, 0.15)
+        sub_terrains["hf_steppingstones"].holes_depth = -1.0
+    if "hf_gaps" in sub_terrains:
+        sub_terrains["hf_gaps"].gap_width_range = (0.06, 0.25)
+        sub_terrains["hf_gaps"].ground_width_range = (0.60, 0.60)
+        sub_terrains["hf_gaps"].gap_depth = -1.0
 
     # Reserve part of the training distribution for the bridge terrain. This
     # is scoped to depth training instead of changing other locomotion tasks.
-    sub_terrains["random_rough"].proportion = 0.05
-    sub_terrains["hf_pyramid_slope"].proportion = 0.05
-    sub_terrains["hf_pyramid_slope_inv"].proportion = 0.05
-    sub_terrains["stonebridge"] = HfStonesBridgeTerrainCfg(
-        proportion=0.15,
-        stone_height_max=0.03,
-        stone_width_range=(0.35, 0.60),
-        stone_length_range=(0.60, 1.00),
-        stone_distance_range=(0.03, 0.15),
-        stone_lateral_distance_range=(0.0, 0.0),
-        holes_depth=-1.0,
-        platform_width=2.0,
-        border_width=0.25,
-    )
+    if "random_rough" in sub_terrains:
+        sub_terrains["random_rough"].proportion = 0.05
+    for name in ("hf_pyramid_slope", "hf_pyramid_slope_inv"):
+        if name in sub_terrains:
+            sub_terrains[name].proportion = 0.05
+    if "stonebridge" not in sub_terrains:
+        sub_terrains["stonebridge"] = HfStonesBridgeTerrainCfg(
+            proportion=0.15,
+            stone_height_max=0.03,
+            stone_width_range=(0.35, 0.60),
+            stone_length_range=(0.60, 1.00),
+            stone_distance_range=(0.03, 0.15),
+            stone_lateral_distance_range=(0.0, 0.0),
+            holes_depth=-1.0,
+            platform_width=2.0,
+            border_width=0.25,
+        )
 
     return terrain_generator
 
@@ -127,7 +140,8 @@ class KuavoS54DepthRoughEnvCfg(s54_cfg.KuavoS54RoughEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.scene.height_scanner = None
+        if self.observations.critic.height_scan is None:
+            self.scene.height_scanner = None
         self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
             self.scene.terrain.terrain_generator
         )
@@ -152,7 +166,8 @@ class KuavoS54DepthRoughEnvCfg_PLAY(s54_cfg.KuavoS54RoughEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
-        self.scene.height_scanner = None
+        if self.observations.critic.height_scan is None:
+            self.scene.height_scanner = None
         self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
             self.scene.terrain.terrain_generator
         )

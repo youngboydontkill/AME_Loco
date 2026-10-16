@@ -43,4 +43,4 @@ python scripts/collect_student_depth.py \
   --no-all_terrains --num_envs 50 --headless
 ```
 
-Student checkpoint 默认读取 `pretrained/student_depth_latest.pt`，也可以通过 `AME_STUDENT_CHECKPOINT` 覆盖。若要显式切换 Student 增强环境，可传入 `--task AME-Kuavo-S54-Depth-enhancement`；采集脚本仍单独运行上述 locomotion policy，并在保存数据时调用 Student。
+Student checkpoint 默认读取 `pretrained/student_depth_gemini_combined_20261005.pt`，也可以通过 `AME_STUDENT_CHECKPOINT` 覆盖。若要显式切换 Student 增强环境，可传入 `--task AME-Kuavo-S54-Depth-enhancement`；采集脚本仍单独运行上述 locomotion policy，并在保存数据时调用 Student。

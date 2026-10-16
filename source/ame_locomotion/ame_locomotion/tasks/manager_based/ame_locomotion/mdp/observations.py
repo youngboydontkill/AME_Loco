@@ -155,3 +155,41 @@ def depth_image(
     depth = torch.clamp(depth, min=min_depth, max=max_depth)
     depth = 2.0 * (depth - min_depth) / (max_depth - min_depth) - 1.0
     return depth.reshape(depth.shape[0], -1)
+
+
+def sensor_randomized_depth_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    noise_std: float = 0.02,
+    dropout_probability: float = 0.02,
+    image_size: tuple[int, int] = (42, 42),
+) -> torch.Tensor:
+    """Return raw depth with explicit sensor noise and dropout randomization."""
+    if noise_std < 0.0 or not 0.0 <= dropout_probability <= 1.0:
+        raise ValueError("noise_std must be non-negative and dropout_probability must be in [0, 1]")
+    cache_key = (
+        getattr(env, "common_step_counter", None), sensor_cfg.name,
+        min_depth, max_depth, noise_std, dropout_probability,
+    )
+    cache = getattr(env, "_sensor_randomized_depth_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache["value"]
+    camera = env.scene.sensors[sensor_cfg.name]
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4:
+        if depth.shape[-1] != 1:
+            raise ValueError(f"Expected a single-channel depth image, got shape {tuple(depth.shape)}")
+        depth = depth[..., 0]
+    if depth.ndim != 3 or tuple(depth.shape[-2:]) != image_size:
+        raise ValueError(f"Expected depth image size {image_size}, got {tuple(depth.shape[-2:])}")
+    depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=min_depth)
+    depth = depth + torch.randn_like(depth) * noise_std
+    dropout = torch.rand_like(depth) < dropout_probability
+    depth = torch.where(dropout, torch.full_like(depth, max_depth), depth)
+    depth = torch.clamp(depth, min=min_depth, max=max_depth)
+    depth = 2.0 * (depth - min_depth) / (max_depth - min_depth) - 1.0
+    value = depth.reshape(depth.shape[0], -1)
+    env._sensor_randomized_depth_cache = {"key": cache_key, "value": value}
+    return value

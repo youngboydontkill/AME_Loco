@@ -24,6 +24,8 @@ class ActorCriticEncoder(nn.Module):
         noise_std_type: str = "scalar",
         # Terrain encoder parameters
         map_scan_dim=(33, 21, 3),  # L=33, W=21, 3D coordinates; depth uses (42, 42, 1)
+        actor_map_scan_dim=None,
+        critic_map_scan_dim=None,
         # map_scan_dim=(17, 11, 3),  # L=17, W=11, 3D coordinates
         mha_dim=64,  # MHA feature dimension
         num_heads=16,  # Number of attention heads
@@ -38,10 +40,12 @@ class ActorCriticEncoder(nn.Module):
             )
         super().__init__()
 
-        self.map_scan_dim = map_scan_dim
+        self.actor_map_scan_dim = actor_map_scan_dim or map_scan_dim
+        self.critic_map_scan_dim = critic_map_scan_dim or map_scan_dim
+        self.map_scan_dim = self.actor_map_scan_dim
         self.mha_dim = mha_dim
         self.num_heads = num_heads
-        self.L, self.W, self.coord_dim = map_scan_dim
+        self.L, self.W, self.coord_dim = self.actor_map_scan_dim
         self.cnn_downsample = cnn_downsample
         self.attach_global = attach_global
 
@@ -60,9 +64,10 @@ class ActorCriticEncoder(nn.Module):
             assert len(obs[obs_group].shape) == 2, "The ActorCritic module only supports 1D observations."
             num_critic_obs += obs[obs_group].shape[-1]
 
-        map_scan_size = self.L * self.W * self.coord_dim
-        actor_proprio_dim = num_actor_obs - map_scan_size
-        critic_proprio_dim = num_critic_obs - map_scan_size
+        actor_map_size = self.actor_map_scan_dim[0] * self.actor_map_scan_dim[1] * self.actor_map_scan_dim[2]
+        critic_map_size = self.critic_map_scan_dim[0] * self.critic_map_scan_dim[1] * self.critic_map_scan_dim[2]
+        actor_proprio_dim = num_actor_obs - actor_map_size
+        critic_proprio_dim = num_critic_obs - critic_map_size
         if actor_proprio_dim <= 0 or critic_proprio_dim <= 0:
             raise ValueError(
                 f"proprio_dim incorrect, actor_proprio_dim={actor_proprio_dim}, critic_proprio_dim={critic_proprio_dim}"
@@ -97,7 +102,8 @@ class ActorCriticEncoder(nn.Module):
             self.critic_obs_normalizer = torch.nn.Identity()
 
         print(f"Critic MLP: {self.critic}")
-        print(f"Encoder CNN: {self.map_cnn}")
+        print(f"Encoder Actor CNN: {self.actor_map_cnn}")
+        print(f"Encoder Critic CNN: {self.critic_map_cnn}")
         if self.attach_global:
             print(f"Encoder Query Projector: {self.query_projector}")
             print(f"Encoder Global MLP: {self.global_encoder}")
@@ -119,24 +125,27 @@ class ActorCriticEncoder(nn.Module):
 
     def _build_terrain_encoder(self, actor_proprio_dim, critic_proprio_dim, attach_global):
         """Build terrain encoder modules shared by actor and critic."""
-        if not self.cnn_downsample:
-            self.map_cnn = nn.Sequential(
-                nn.Conv2d(self.coord_dim, 16, kernel_size=5, padding=2),
+        def make_cnn(channels):
+            if not self.cnn_downsample:
+                return nn.Sequential(
+                nn.Conv2d(channels, 16, kernel_size=5, padding=2),
                 nn.ReLU(),
                 nn.BatchNorm2d(16),
                 nn.Conv2d(16, self.cnn_output_dim, kernel_size=5, padding=2),
                 nn.ReLU(),
                 nn.BatchNorm2d(self.cnn_output_dim),
-            )
-        else:
-            self.map_cnn = nn.Sequential(
-                nn.Conv2d(self.coord_dim, 16, kernel_size=5, padding=2, stride=2),
+                )
+            return nn.Sequential(
+                nn.Conv2d(channels, 16, kernel_size=5, padding=2, stride=2),
                 nn.ReLU(),
                 nn.BatchNorm2d(16),
                 nn.Conv2d(16, self.cnn_output_dim, kernel_size=3, padding=1),
                 nn.ReLU(),
                 nn.BatchNorm2d(self.cnn_output_dim),
             )
+        self.actor_map_cnn = make_cnn(self.actor_map_scan_dim[2])
+        self.critic_map_cnn = make_cnn(self.critic_map_scan_dim[2])
+        self.map_cnn = self.actor_map_cnn
 
         self.actor_proprio_embedding = nn.Linear(actor_proprio_dim, self.mha_dim)
         self.critic_proprio_embedding = nn.Linear(critic_proprio_dim, self.mha_dim)
@@ -158,10 +167,16 @@ class ActorCriticEncoder(nn.Module):
         """Encode terrain/map observations into attention-ready features."""
         # Extract map scan from the tail of observation.
         # Stored order and reshape order differ, so swap W/L in reshape to keep spatial alignment.
-        map_scan = obs[:, -self.L * self.W * self.coord_dim:].reshape(-1, self.W, self.L, self.coord_dim)
+        is_actor = obs.shape[1] - self.actor_proprio_dim == (
+            self.actor_map_scan_dim[0] * self.actor_map_scan_dim[1] * self.actor_map_scan_dim[2]
+        )
+        map_dim = self.actor_map_scan_dim if is_actor else self.critic_map_scan_dim
+        map_size = map_dim[0] * map_dim[1] * map_dim[2]
+        map_scan = obs[:, -map_size:].reshape(-1, map_dim[1], map_dim[0], map_dim[2])
 
         map_image = map_scan.permute(0, 3, 1, 2)
-        cnn_features = self.map_cnn(map_image)
+        cnn = self.actor_map_cnn if is_actor else self.critic_map_cnn
+        cnn_features = cnn(map_image)
         cnn_height, cnn_width = cnn_features.shape[-2:]
         if not self.cnn_downsample:
             cnn_features = cnn_features.permute(0, 2, 3, 1).reshape(-1, self.L * self.W, self.cnn_output_dim)
@@ -186,7 +201,7 @@ class ActorCriticEncoder(nn.Module):
         local_features = cnn_features + position.unsqueeze(0)
         
         # Extract proprioceptive features (all non-map terms)
-        proprio_obs = obs[:, :-self.L * self.W * self.coord_dim]
+        proprio_obs = obs[:, :-map_size]
         if proprio_obs.shape[1] == self.actor_proprio_dim:
             proprio_embedding = self.actor_proprio_embedding(proprio_obs)
         elif proprio_obs.shape[1] == self.critic_proprio_dim:

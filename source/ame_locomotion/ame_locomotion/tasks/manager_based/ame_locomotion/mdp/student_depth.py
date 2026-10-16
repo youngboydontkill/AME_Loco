@@ -19,7 +19,7 @@ DEFAULT_STUDENT_CHECKPOINT = str(
     Path(
         os.environ.get(
             "AME_STUDENT_CHECKPOINT",
-            _REPO_ROOT / "pretrained/student_depth_stage2_combined.pt",
+            _REPO_ROOT / "pretrained/student_depth_gemini_combined_20261005.pt",
         )
     )
 )
@@ -40,7 +40,7 @@ class _DepthwiseSeparableResidualBlock(nn.Module):
 
 
 class _ProbabilityHead(nn.Module):
-    def __init__(self, channels: int = 16, hidden: int = 8) -> None:
+    def __init__(self, channels: int = 16, hidden: int = 8, output_bias: float = 0.0) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(channels, hidden, 3, padding=1),
@@ -50,31 +50,55 @@ class _ProbabilityHead(nn.Module):
         )
         self.output = nn.Conv2d(hidden, 1, 1)
         self.activation = nn.Sigmoid()
+        nn.init.zeros_(self.output.weight)
+        nn.init.constant_(self.output.bias, output_bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.activation(self.output(self.features(x)))
 
 
 class StudentNetwork(nn.Module):
-    """The 16-channel, four-block Student used by stable-sim2real."""
+    """Inference-compatible multi-task Student architecture."""
 
-    def __init__(self) -> None:
+    def __init__(self, channels: int = 16, num_blocks: int = 4, input_channels: int = 1) -> None:
         super().__init__()
-        self.stem = nn.Sequential(nn.Conv2d(1, 16, 3, padding=1), nn.SiLU(inplace=True))
-        self.backbone = nn.Sequential(*(_DepthwiseSeparableResidualBlock(16) for _ in range(4)))
-        self.residual_head = nn.Sequential(
-            nn.Conv2d(16, 16, 3, padding=1),
-            nn.SiLU(inplace=True),
-            nn.Conv2d(16, 1, 1),
+        self.input_channels = input_channels
+        self.stem = nn.Sequential(
+            nn.Conv2d(input_channels, channels, 3, padding=1), nn.SiLU(inplace=True)
         )
-        self.validity_head = _ProbabilityHead()
-        self.confidence_head = _ProbabilityHead()
+        self.backbone = nn.Sequential(
+            *(_DepthwiseSeparableResidualBlock(channels) for _ in range(num_blocks))
+        )
+        self.residual_head = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, padding=1),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(channels, 1, 1),
+        )
+        hidden = max(channels // 2, 8)
+        self.validity_head = _ProbabilityHead(channels, hidden)
+        self.confidence_head = _ProbabilityHead(channels, hidden)
+        self.edge_head = _ProbabilityHead(channels, hidden, output_bias=-2.0)
+        self.foothold_head = _ProbabilityHead(channels, hidden)
 
-    def forward(self, sim_depth_m: torch.Tensor) -> torch.Tensor:
-        features = self.backbone(self.stem(sim_depth_m))
+    def forward_all(self, model_input: torch.Tensor) -> dict[str, torch.Tensor]:
+        if model_input.shape[1] != self.input_channels:
+            raise ValueError(
+                f"Student expects {self.input_channels} input channels, got {model_input.shape[1]}"
+            )
+        sim_depth_m = model_input[:, :1]
+        features = self.backbone(self.stem(model_input))
         residual = self.residual_head(features)
         validity = self.validity_head(features)
-        return sim_depth_m + validity * residual
+        return {
+            "depth": sim_depth_m + validity * residual,
+            "validity": validity,
+            "confidence": self.confidence_head(features),
+            "edge": self.edge_head(features),
+            "foothold": self.foothold_head(features),
+        }
+
+    def forward(self, sim_depth_m: torch.Tensor) -> torch.Tensor:
+        return self.forward_all(sim_depth_m)["depth"]
 
 
 def _load_student(env: ManagerBasedEnv, checkpoint_path: str) -> StudentNetwork:
@@ -91,12 +115,21 @@ def _load_student(env: ManagerBasedEnv, checkpoint_path: str) -> StudentNetwork:
             "checkpoint_path in the enhancement observation config."
         )
 
-    model = StudentNetwork().to(env.device)
     try:
         checkpoint = torch.load(path, map_location=env.device, weights_only=True)
     except TypeError:  # PyTorch < 2.6
         checkpoint = torch.load(path, map_location=env.device)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
+    architecture = checkpoint.get("architecture", {})
+    channels = int(architecture.get("channels", state_dict["stem.0.weight"].shape[0]))
+    input_channels = int(architecture.get("input_channels", state_dict["stem.0.weight"].shape[1]))
+    block_ids = {
+        int(key.split(".")[1])
+        for key in state_dict
+        if key.startswith("backbone.") and key.split(".")[1].isdigit()
+    }
+    num_blocks = int(architecture.get("residual_blocks", max(block_ids, default=3) + 1))
+    model = StudentNetwork(channels, num_blocks, input_channels).to(env.device)
     # The source model exposes mask_head as an alias; it is not needed for inference.
     state_dict = {key: value for key, value in state_dict.items() if not key.startswith("mask_head.")}
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
@@ -110,15 +143,16 @@ def _load_student(env: ManagerBasedEnv, checkpoint_path: str) -> StudentNetwork:
     return model
 
 
-def student_depth_image(
+def student_depth_confidence_image(
     env: ManagerBasedEnv,
     sensor_cfg: SceneEntityCfg,
     checkpoint_path: str = DEFAULT_STUDENT_CHECKPOINT,
     min_depth: float = 0.05,
     max_depth: float = 5.0,
     sensor_valid_max: float = 4.9,
+    raw_depth_probability: float = 0.2,
 ) -> torch.Tensor:
-    """Enhance camera depth with the frozen Student and return a flat ``[-1, 1]`` map.
+    """Return interleaved normalized enhanced depth and confidence maps.
 
     The Student consumes metres at 42x42. Isaac Lab's camera output is already
     42x42 for the S54 task; the shape check catches accidental camera changes.
@@ -139,6 +173,7 @@ def student_depth_image(
         min_depth,
         max_depth,
         sensor_valid_max,
+        raw_depth_probability,
     )
     cache = getattr(env, "_ame_student_depth_cache", None)
     if cache is not None and cache["key"] == cache_key:
@@ -155,10 +190,205 @@ def student_depth_image(
     sim_depth = torch.where(valid, sim_depth, torch.full_like(sim_depth, sensor_valid_max))
     sim_depth = sim_depth.clamp(min=min_depth, max=sensor_valid_max).unsqueeze(1)
 
+    model = _load_student(env, checkpoint_path)
+    model_input = sim_depth
+    if model.input_channels == 2:
+        model_input = torch.cat((sim_depth, valid.unsqueeze(1).to(sim_depth.dtype)), dim=1)
     with torch.inference_mode():
-        enhanced = _load_student(env, checkpoint_path)(sim_depth)
-    enhanced = enhanced[:, 0].clamp(min=min_depth, max=max_depth)
-    normalized = 2.0 * (enhanced - 0.0) / max_depth - 1.0
-    normalized = normalized.reshape(normalized.shape[0], -1)
+        output = model.forward_all(model_input)
+    enhanced = output["depth"][:, 0].clamp(min=min_depth, max=max_depth)
+    normalized_depth = 2.0 * enhanced / max_depth - 1.0
+    # The combined training masks are all valid, so its confidence head cannot
+    # learn invalid-pixel behavior. Preserve known camera invalidity at runtime.
+    confidence = torch.minimum(
+        output["confidence"][:, 0].clamp(0.0, 1.0), valid.to(sim_depth.dtype)
+    )
+    if not 0.0 <= raw_depth_probability <= 1.0:
+        raise ValueError("raw_depth_probability must be in [0, 1]")
+    raw_depth = 2.0 * (sim_depth[:, 0] - min_depth) / (max_depth - min_depth) - 1.0
+    use_raw = torch.rand((depth.shape[0], 1, 1), device=depth.device) < raw_depth_probability
+    normalized_depth = torch.where(use_raw, raw_depth, normalized_depth)
+    confidence = torch.where(use_raw, torch.zeros_like(confidence), confidence)
+    # ActorCriticEncoder reshapes the final map values as H x W x C. Interleave
+    # channels per pixel before flattening so depth and confidence stay aligned.
+    normalized = torch.stack((normalized_depth, confidence), dim=-1).reshape(
+        normalized_depth.shape[0], -1
+    )
     env._ame_student_depth_cache = {"key": cache_key, "value": normalized}
     return normalized
+
+
+def student_depth_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = DEFAULT_STUDENT_CHECKPOINT,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+) -> torch.Tensor:
+    """Return the enhanced depth channel using the legacy flat observation shape."""
+    paired = student_depth_confidence_image(
+        env,
+        sensor_cfg,
+        checkpoint_path=checkpoint_path,
+        min_depth=min_depth,
+        max_depth=max_depth,
+        sensor_valid_max=sensor_valid_max,
+    )
+    return paired[:, 0::2]
+
+
+def student_depth_geometry_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = DEFAULT_STUDENT_CHECKPOINT,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+    raw_depth_probability: float = 0.2,
+) -> torch.Tensor:
+    """Return interleaved enhanced depth, confidence, edge and foothold maps."""
+    camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+    cache_key = (
+        "geometry", getattr(env, "common_step_counter", None), sensor_cfg.name,
+        checkpoint_path, min_depth, max_depth, sensor_valid_max,
+    )
+    cache = getattr(env, "_ame_student_geometry_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache["value"]
+
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4 and depth.shape[-1] == 1:
+        depth = depth[..., 0]
+    if depth.ndim != 3 or tuple(depth.shape[-2:]) != (42, 42):
+        raise ValueError(f"Student expects camera depth [N, 42, 42], got {tuple(depth.shape)}")
+    valid = torch.isfinite(depth) & (depth >= min_depth) & (depth <= sensor_valid_max)
+    sim_depth = torch.nan_to_num(depth, nan=sensor_valid_max, posinf=sensor_valid_max, neginf=min_depth)
+    sim_depth = torch.where(valid, sim_depth, torch.full_like(sim_depth, sensor_valid_max))
+    sim_depth = sim_depth.clamp(min=min_depth, max=sensor_valid_max).unsqueeze(1)
+    model = _load_student(env, checkpoint_path)
+    model_input = sim_depth
+    if model.input_channels == 2:
+        model_input = torch.cat((sim_depth, valid.unsqueeze(1).to(sim_depth.dtype)), dim=1)
+    with torch.inference_mode():
+        output = model.forward_all(model_input)
+    enhanced = output["depth"][:, 0].clamp(min=min_depth, max=max_depth)
+    normalized_depth = 2.0 * enhanced / max_depth - 1.0
+    confidence = torch.minimum(output["confidence"][:, 0].clamp(0.0, 1.0), valid.to(sim_depth.dtype))
+    edge = output["edge"][:, 0].clamp(0.0, 1.0)
+    foothold = output["foothold"][:, 0].clamp(0.0, 1.0)
+    if not 0.0 <= raw_depth_probability <= 1.0:
+        raise ValueError("raw_depth_probability must be in [0, 1]")
+    raw_depth = 2.0 * (sim_depth[:, 0] - min_depth) / (max_depth - min_depth) - 1.0
+    use_raw = torch.rand((depth.shape[0], 1, 1), device=depth.device) < raw_depth_probability
+    normalized_depth = torch.where(use_raw, raw_depth, normalized_depth)
+    confidence = torch.where(use_raw, torch.zeros_like(confidence), confidence)
+    edge = torch.where(use_raw, torch.zeros_like(edge), edge)
+    foothold = torch.where(use_raw, torch.zeros_like(foothold), foothold)
+    normalized = torch.stack((normalized_depth, confidence, edge, foothold), dim=-1).reshape(
+        normalized_depth.shape[0], -1
+    )
+    env._ame_student_geometry_cache = {"key": cache_key, "value": normalized}
+    return normalized
+
+
+def student_depth_prior_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = DEFAULT_STUDENT_CHECKPOINT,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+    raw_depth_probability: float = 0.2,
+) -> torch.Tensor:
+    """Return depth plus all frozen Student auxiliary maps for the privileged Critic."""
+    camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4 and depth.shape[-1] == 1:
+        depth = depth[..., 0]
+    if depth.ndim != 3 or tuple(depth.shape[-2:]) != (42, 42):
+        raise ValueError(f"Student expects camera depth [N, 42, 42], got {tuple(depth.shape)}")
+    valid = torch.isfinite(depth) & (depth >= min_depth) & (depth <= sensor_valid_max)
+    sim_depth = torch.nan_to_num(depth, nan=sensor_valid_max, posinf=sensor_valid_max, neginf=min_depth)
+    sim_depth = torch.where(valid, sim_depth, torch.full_like(sim_depth, sensor_valid_max))
+    sim_depth = sim_depth.clamp(min=min_depth, max=sensor_valid_max).unsqueeze(1)
+    model = _load_student(env, checkpoint_path)
+    model_input = sim_depth
+    if model.input_channels == 2:
+        model_input = torch.cat((sim_depth, valid.unsqueeze(1).to(sim_depth.dtype)), dim=1)
+    with torch.inference_mode():
+        output = model.forward_all(model_input)
+    enhanced = output["depth"][:, 0].clamp(min=min_depth, max=max_depth)
+    normalized_depth = 2.0 * enhanced / max_depth - 1.0
+    confidence = torch.minimum(output["confidence"][:, 0].clamp(0.0, 1.0), valid.to(sim_depth.dtype))
+    normalized = torch.stack(
+        (
+            normalized_depth,
+            output["validity"][:, 0].clamp(0.0, 1.0),
+            confidence,
+            output["edge"][:, 0].clamp(0.0, 1.0),
+            output["foothold"][:, 0].clamp(0.0, 1.0),
+        ),
+        dim=-1,
+    )
+    if not 0.0 <= raw_depth_probability <= 1.0:
+        raise ValueError("raw_depth_probability must be in [0, 1]")
+    raw_depth = 2.0 * (sim_depth[:, 0] - min_depth) / (max_depth - min_depth) - 1.0
+    use_raw = torch.rand((depth.shape[0], 1, 1, 1), device=depth.device) < raw_depth_probability
+    normalized[..., 0] = torch.where(use_raw, raw_depth, normalized[..., 0])
+    normalized[..., 1:] = torch.where(
+        use_raw.unsqueeze(-1), torch.zeros_like(normalized[..., 1:]), normalized[..., 1:]
+    )
+    return normalized.reshape(normalized.shape[0], -1)
+
+
+def _randomized_depth_like(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    min_depth: float,
+    max_depth: float,
+    noise_std: float,
+    dropout_probability: float,
+) -> torch.Tensor:
+    camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4 and depth.shape[-1] == 1:
+        depth = depth[..., 0]
+    depth = torch.nan_to_num(depth, nan=max_depth, posinf=max_depth, neginf=min_depth)
+    depth = depth + torch.randn_like(depth) * noise_std
+    dropout = torch.rand_like(depth) < dropout_probability
+    depth = torch.where(dropout, torch.full_like(depth, max_depth), depth)
+    depth = depth.clamp(min=min_depth, max=max_depth)
+    return (2.0 * (depth - min_depth) / (max_depth - min_depth) - 1.0).reshape(depth.shape[0], -1)
+
+
+def student_depth_mixed_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    enhance_probability: float = 0.8,
+    **kwargs,
+) -> torch.Tensor:
+    """Use Student depth for most environments and randomized raw depth for the rest."""
+    if not 0.0 <= enhance_probability <= 1.0:
+        raise ValueError("enhance_probability must be in [0, 1]")
+    enhanced = student_depth_image(env, sensor_cfg, raw_depth_probability=0.0, **kwargs)
+    raw = _randomized_depth_like(env, sensor_cfg, kwargs.get("min_depth", 0.05), kwargs.get("max_depth", 5.0), 0.02, 0.02)
+    use_enhance = torch.rand((enhanced.shape[0], 1), device=enhanced.device) < enhance_probability
+    return torch.where(use_enhance, enhanced, raw)
+
+
+def student_depth_prior_mixed_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    enhance_probability: float = 0.8,
+    **kwargs,
+) -> torch.Tensor:
+    """Mixed five-channel map for a privileged Critic."""
+    if not 0.0 <= enhance_probability <= 1.0:
+        raise ValueError("enhance_probability must be in [0, 1]")
+    enhanced = student_depth_prior_image(env, sensor_cfg, raw_depth_probability=0.0, **kwargs)
+    raw_depth = _randomized_depth_like(env, sensor_cfg, kwargs.get("min_depth", 0.05), kwargs.get("max_depth", 5.0), 0.02, 0.02)
+    raw = torch.zeros_like(enhanced)
+    raw[:, 0::5] = raw_depth
+    use_enhance = torch.rand((enhanced.shape[0], 1), device=enhanced.device) < enhance_probability
+    return torch.where(use_enhance, enhanced, raw)

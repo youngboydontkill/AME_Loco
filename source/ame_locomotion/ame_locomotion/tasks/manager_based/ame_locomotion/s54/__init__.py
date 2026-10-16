@@ -107,3 +107,157 @@ gym.register(
         ),
     },
 )
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-enhancement-privileged",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthEnhancementPrivilegedEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthEnhancementPrivilegedAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-enhancement-privileged-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthEnhancementPrivilegedEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthEnhancementPrivilegedAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-privileged-critic",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthPrivilegedCriticEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthPrivilegedCriticAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-privileged-critic-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthPrivilegedCriticEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthPrivilegedCriticAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-geometry-enhancement",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthGeometryEnhancementEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthGeometryEnhancementAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-geometry-enhancement-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthGeometryEnhancementEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthGeometryEnhancementAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-student",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthStudentEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthStudentAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-student-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthStudentEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthStudentAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-sensor-randomized",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthSensorRandomizedEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthSensorRandomizedAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-sensor-randomized-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:KuavoS54DepthSensorRandomizedEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthSensorRandomizedAMEPPORunnerCfg"
+        ),
+    },
+)
