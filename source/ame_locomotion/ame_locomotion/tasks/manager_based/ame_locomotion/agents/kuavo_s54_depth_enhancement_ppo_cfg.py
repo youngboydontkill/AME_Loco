@@ -61,6 +61,31 @@ class KuavoS54DepthEnhancementPrivilegedAMEPPORunnerCfg(KuavoS54DepthAMEPPORunne
 
 
 @configclass
+class KuavoS54DepthEnhancementPrivilegedV2ActorCriticCfg(KuavoS54DepthActorCriticCfg):
+    """Actor receives depth; Critic additionally receives one edge map."""
+
+    actor_map_scan_dim: tuple[int, int, int] = (42, 42, 1)
+    critic_map_scan_dim: tuple[int, int, int] = (42, 42, 2)
+
+
+@configclass
+class KuavoS54DepthEnhancementPrivilegedV2AMEPPORunnerCfg(
+    KuavoS54DepthAMEPPORunnerCfg
+):
+    """PPO settings for the edge-privileged S54 v2 task."""
+
+    experiment_name = "kuavo_s54_depth_enhancement_privileged_v2"
+    policy = KuavoS54DepthEnhancementPrivilegedV2ActorCriticCfg(
+        init_noise_std=1.0,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        activation="elu",
+    )
+
+
+@configclass
 class KuavoS54DepthGeometryActorCriticCfg(KuavoS54DepthConfidenceActorCriticCfg):
     """CNN input contains depth, confidence, edge and foothold channels."""
 

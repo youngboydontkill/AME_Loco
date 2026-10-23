@@ -13,7 +13,7 @@ from .velocity_env_cfg_s54_depth import (
     KuavoS54DepthSceneCfg,
     _make_easier_depth_terrain,
 )
-from ..mdp.student_depth import DEFAULT_STUDENT_CHECKPOINT
+from ..mdp.student_depth import DEFAULT_STUDENT_CHECKPOINT, EDGE_STUDENT_CHECKPOINT
 
 
 @configclass
@@ -120,6 +120,64 @@ class KuavoS54DepthEnhancementPrivilegedEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLA
 
     scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=50, env_spacing=2.5)
     observations: PrivilegedStudentDepthObservationsCfg = PrivilegedStudentDepthObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
+            self.scene.terrain.terrain_generator
+        )
+
+
+@configclass
+class StudentEdgePrivilegedObservationsCfg(DepthObservationsCfg):
+    """Keep the Actor's mixed depth and add only Student edge to the Critic."""
+
+    @configclass
+    class PolicyCfg(DepthObservationsCfg.PolicyCfg):
+        depth_image = ObsTerm(
+            func=mdp.student_depth_edge_mixed_actor_image,
+            params={
+                "sensor_cfg": SceneEntityCfg("depth_camera"),
+                "checkpoint_path": EDGE_STUDENT_CHECKPOINT,
+                "enhance_probability": 0.8,
+            },
+        )
+
+    @configclass
+    class CriticCfg(DepthObservationsCfg.CriticCfg):
+        depth_image = ObsTerm(
+            func=mdp.student_depth_edge_mixed_critic_image,
+            params={
+                "sensor_cfg": SceneEntityCfg("depth_camera"),
+                "checkpoint_path": EDGE_STUDENT_CHECKPOINT,
+                "enhance_probability": 0.8,
+            },
+        )
+
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
+
+
+@configclass
+class KuavoS54DepthEnhancementPrivilegedV2EnvCfg(KuavoS54DepthRoughEnvCfg):
+    """Asymmetric Student depth Actor with an edge-privileged Critic."""
+
+    scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=2048, env_spacing=2.5)
+    observations: StudentEdgePrivilegedObservationsCfg = StudentEdgePrivilegedObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.terrain.terrain_generator = _make_easier_depth_terrain(
+            self.scene.terrain.terrain_generator
+        )
+
+
+@configclass
+class KuavoS54DepthEnhancementPrivilegedV2EnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
+    """Playback configuration for the edge-privileged S54 v2 task."""
+
+    scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=50, env_spacing=2.5)
+    observations: StudentEdgePrivilegedObservationsCfg = StudentEdgePrivilegedObservationsCfg()
 
     def __post_init__(self):
         super().__post_init__()

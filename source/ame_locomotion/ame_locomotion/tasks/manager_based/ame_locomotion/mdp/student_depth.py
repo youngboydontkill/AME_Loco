@@ -23,6 +23,7 @@ DEFAULT_STUDENT_CHECKPOINT = str(
         )
     )
 )
+EDGE_STUDENT_CHECKPOINT = str(_REPO_ROOT / "pretrained/student_depth_edge_20261016.pt")
 
 
 class _DepthwiseSeparableResidualBlock(nn.Module):
@@ -60,9 +61,16 @@ class _ProbabilityHead(nn.Module):
 class StudentNetwork(nn.Module):
     """Inference-compatible multi-task Student architecture."""
 
-    def __init__(self, channels: int = 16, num_blocks: int = 4, input_channels: int = 1) -> None:
+    def __init__(
+        self,
+        channels: int = 16,
+        num_blocks: int = 4,
+        input_channels: int = 1,
+        foothold_enabled: bool = True,
+    ) -> None:
         super().__init__()
         self.input_channels = input_channels
+        self.foothold_enabled = foothold_enabled
         self.stem = nn.Sequential(
             nn.Conv2d(input_channels, channels, 3, padding=1), nn.SiLU(inplace=True)
         )
@@ -78,7 +86,8 @@ class StudentNetwork(nn.Module):
         self.validity_head = _ProbabilityHead(channels, hidden)
         self.confidence_head = _ProbabilityHead(channels, hidden)
         self.edge_head = _ProbabilityHead(channels, hidden, output_bias=-2.0)
-        self.foothold_head = _ProbabilityHead(channels, hidden)
+        if foothold_enabled:
+            self.foothold_head = _ProbabilityHead(channels, hidden)
 
     def forward_all(self, model_input: torch.Tensor) -> dict[str, torch.Tensor]:
         if model_input.shape[1] != self.input_channels:
@@ -89,13 +98,15 @@ class StudentNetwork(nn.Module):
         features = self.backbone(self.stem(model_input))
         residual = self.residual_head(features)
         validity = self.validity_head(features)
-        return {
+        output = {
             "depth": sim_depth_m + validity * residual,
             "validity": validity,
             "confidence": self.confidence_head(features),
             "edge": self.edge_head(features),
-            "foothold": self.foothold_head(features),
         }
+        if self.foothold_enabled:
+            output["foothold"] = self.foothold_head(features)
+        return output
 
     def forward(self, sim_depth_m: torch.Tensor) -> torch.Tensor:
         return self.forward_all(sim_depth_m)["depth"]
@@ -129,7 +140,10 @@ def _load_student(env: ManagerBasedEnv, checkpoint_path: str) -> StudentNetwork:
         if key.startswith("backbone.") and key.split(".")[1].isdigit()
     }
     num_blocks = int(architecture.get("residual_blocks", max(block_ids, default=3) + 1))
-    model = StudentNetwork(channels, num_blocks, input_channels).to(env.device)
+    foothold_enabled = bool(architecture.get("foothold_enabled", True))
+    model = StudentNetwork(
+        channels, num_blocks, input_channels, foothold_enabled=foothold_enabled
+    ).to(env.device)
     # The source model exposes mask_head as an alias; it is not needed for inference.
     state_dict = {key: value for key, value in state_dict.items() if not key.startswith("mask_head.")}
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
@@ -276,7 +290,10 @@ def student_depth_geometry_image(
     normalized_depth = 2.0 * enhanced / max_depth - 1.0
     confidence = torch.minimum(output["confidence"][:, 0].clamp(0.0, 1.0), valid.to(sim_depth.dtype))
     edge = output["edge"][:, 0].clamp(0.0, 1.0)
-    foothold = output["foothold"][:, 0].clamp(0.0, 1.0)
+    foothold = (
+        output["foothold"][:, 0].clamp(0.0, 1.0)
+        if "foothold" in output else torch.zeros_like(edge)
+    )
     if not 0.0 <= raw_depth_probability <= 1.0:
         raise ValueError("raw_depth_probability must be in [0, 1]")
     raw_depth = 2.0 * (sim_depth[:, 0] - min_depth) / (max_depth - min_depth) - 1.0
@@ -327,7 +344,7 @@ def student_depth_prior_image(
             output["validity"][:, 0].clamp(0.0, 1.0),
             confidence,
             output["edge"][:, 0].clamp(0.0, 1.0),
-            output["foothold"][:, 0].clamp(0.0, 1.0),
+            output.get("foothold", torch.zeros_like(output["edge"]))[:, 0].clamp(0.0, 1.0),
         ),
         dim=-1,
     )
@@ -392,3 +409,91 @@ def student_depth_prior_mixed_image(
     raw[:, 0::5] = raw_depth
     use_enhance = torch.rand((enhanced.shape[0], 1), device=enhanced.device) < enhance_probability
     return torch.where(use_enhance, enhanced, raw)
+
+
+def _student_depth_edge_mixed_pair(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str,
+    enhance_probability: float,
+    min_depth: float,
+    max_depth: float,
+    sensor_valid_max: float,
+) -> torch.Tensor:
+    """Return aligned mixed depth and edge maps, cached for both observation groups."""
+    if not 0.0 <= enhance_probability <= 1.0:
+        raise ValueError("enhance_probability must be in [0, 1]")
+    cache_key = (
+        getattr(env, "common_step_counter", None), sensor_cfg.name, checkpoint_path,
+        enhance_probability, min_depth, max_depth, sensor_valid_max,
+    )
+    cache = getattr(env, "_ame_student_depth_edge_mixed_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache["value"]
+
+    camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4 and depth.shape[-1] == 1:
+        depth = depth[..., 0]
+    if depth.ndim != 3 or tuple(depth.shape[-2:]) != (42, 42):
+        raise ValueError(f"Student expects camera depth [N, 42, 42], got {tuple(depth.shape)}")
+
+    valid = torch.isfinite(depth) & (depth >= min_depth) & (depth <= sensor_valid_max)
+    sim_depth = torch.nan_to_num(
+        depth, nan=sensor_valid_max, posinf=sensor_valid_max, neginf=min_depth
+    )
+    sim_depth = torch.where(valid, sim_depth, torch.full_like(sim_depth, sensor_valid_max))
+    sim_depth = sim_depth.clamp(min=min_depth, max=sensor_valid_max).unsqueeze(1)
+    model = _load_student(env, checkpoint_path)
+    model_input = sim_depth
+    if model.input_channels == 2:
+        model_input = torch.cat((sim_depth, valid.unsqueeze(1).to(sim_depth.dtype)), dim=1)
+    with torch.inference_mode():
+        output = model.forward_all(model_input)
+
+    enhanced_depth = (
+        2.0 * output["depth"][:, 0].clamp(min=min_depth, max=max_depth) / max_depth - 1.0
+    ).reshape(depth.shape[0], -1)
+    enhanced_edge = output["edge"][:, 0].clamp(0.0, 1.0).reshape(depth.shape[0], -1)
+    raw_depth = _randomized_depth_like(
+        env, sensor_cfg, min_depth, max_depth, noise_std=0.02, dropout_probability=0.02
+    )
+    use_enhance = torch.rand((depth.shape[0], 1), device=depth.device) < enhance_probability
+    mixed_depth = torch.where(use_enhance, enhanced_depth, raw_depth)
+    mixed_edge = torch.where(use_enhance, enhanced_edge, torch.zeros_like(raw_depth))
+    pair = torch.stack((mixed_depth, mixed_edge), dim=-1).reshape(depth.shape[0], -1)
+    env._ame_student_depth_edge_mixed_cache = {"key": cache_key, "value": pair}
+    return pair
+
+
+def student_depth_edge_mixed_actor_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = EDGE_STUDENT_CHECKPOINT,
+    enhance_probability: float = 0.8,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+) -> torch.Tensor:
+    """Single-channel enhanced/raw mix for the v2 Actor."""
+    pair = _student_depth_edge_mixed_pair(
+        env, sensor_cfg, checkpoint_path, enhance_probability,
+        min_depth, max_depth, sensor_valid_max,
+    )
+    return pair[:, 0::2]
+
+
+def student_depth_edge_mixed_critic_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = EDGE_STUDENT_CHECKPOINT,
+    enhance_probability: float = 0.8,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+) -> torch.Tensor:
+    """Two-channel mixed depth and privileged edge map for the v2 Critic."""
+    return _student_depth_edge_mixed_pair(
+        env, sensor_cfg, checkpoint_path, enhance_probability,
+        min_depth, max_depth, sensor_valid_max,
+    )

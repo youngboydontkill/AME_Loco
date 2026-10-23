@@ -141,6 +141,38 @@ gym.register(
 )
 
 gym.register(
+    id="AME-Kuavo-S54-Depth-enhancement-privileged-v2-edge",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthEnhancementPrivilegedV2EnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthEnhancementPrivilegedV2AMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-enhancement-privileged-v2-edge-Play",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhancement:"
+            "KuavoS54DepthEnhancementPrivilegedV2EnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_enhancement_ppo_cfg:"
+            "KuavoS54DepthEnhancementPrivilegedV2AMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="AME-Kuavo-S54-Depth-privileged-critic",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
