@@ -625,10 +625,10 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
                 #     proportion=0.1, noise_range=(0.02, 0.1), noise_step=0.01, border_width=0.25
                 # ),
-                # "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
-                #     proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
-                #     holes_depth=-2.0, border_width=0.25
-                # ),
+                "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+                    proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
+                    holes_depth=-2.0, border_width=0.25
+                ),
                 # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
                 #     proportion=1.0, platform_width=2.0, border_width=0.25, holes_depth=-2.0,
                 #     stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2),
@@ -642,9 +642,9 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #             proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
                 #             ground_width_range=(0.5, 0.5), ground_height_max=0.0
                 # ),
-                "rails": terrain_gen.MeshRailsTerrainCfg(
-                    proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
-                ),
+                # "rails": terrain_gen.MeshRailsTerrainCfg(
+                #     proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
+                # ),
             }
 
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
