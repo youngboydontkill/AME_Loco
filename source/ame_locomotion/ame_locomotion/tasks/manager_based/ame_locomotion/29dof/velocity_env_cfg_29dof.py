@@ -626,7 +626,7 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #     proportion=0.1, noise_range=(0.02, 0.1), noise_step=0.01, border_width=0.25
                 # ),
                 "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
-                    proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
+                    proportion=1.0, stone_height_max=0.0, stone_width_range=(0.25, 0.25), stone_distance_range=(0.2, 0.2), platform_width=2.0,
                     holes_depth=-2.0, border_width=0.25
                 ),
                 # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(

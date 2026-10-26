@@ -2,6 +2,7 @@
 
 import importlib
 
+import math
 import isaaclab.sim as sim_utils
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -105,4 +106,11 @@ class KuavoS54DepthRoughEnvCfg_PLAY(s54_cfg.KuavoS54RoughEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
+        self.commands.base_velocity.ranges.lin_vel_x = (1, 1)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
+
+
         self.scene.height_scanner = None

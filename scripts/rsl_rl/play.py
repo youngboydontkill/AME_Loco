@@ -21,6 +21,18 @@ import cli_args  # isort: skip
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--save_attention_weights", action="store_true", default=False, help="Save attention weights during play.")
 parser.add_argument("--vis_attention", action="store_true", default=False, help="Visualize attention weights as colored markers (env 0).")
+parser.add_argument(
+    "--vis_depth",
+    action="store_true",
+    default=False,
+    help="Visualize the depth map actually passed to the actor (env 0).",
+)
+parser.add_argument(
+    "--depth_vis_interval",
+    type=int,
+    default=1,
+    help="Update the actor depth visualization every N simulation steps.",
+)
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=300, help="Length of the recorded video (in steps).")
 parser.add_argument(
@@ -191,6 +203,70 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     attention_visualizer = None
     identity_quat = None
     attention_num_bins = 8  # Number of discrete color bins
+    depth_figure = None
+    depth_axes = None
+    depth_image_artist = None
+    depth_colorbar = None
+
+    def _init_depth_visualizer():
+        """Create a non-blocking window for the actor's env-0 depth input."""
+        nonlocal depth_figure, depth_axes, depth_image_artist, depth_colorbar
+        if not args_cli.vis_depth:
+            return
+        if args_cli.depth_vis_interval < 1:
+            raise ValueError("--depth_vis_interval must be at least 1")
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError as exc:
+            raise RuntimeError("--vis_depth requires matplotlib in the active Python environment") from exc
+
+        plt.ion()
+        depth_figure, depth_axes = plt.subplots(figsize=(5, 5), num="Actor depth input (env 0)")
+        depth_image_artist = depth_axes.imshow(
+            torch.zeros((42, 42), device="cpu").numpy(),
+            cmap="magma",
+            vmin=0.0,
+            vmax=5.0,
+            interpolation="nearest",
+        )
+        depth_axes.set_title("Actor depth input - env 0")
+        depth_axes.set_xlabel("depth (m)")
+        depth_axes.set_xticks([])
+        depth_axes.set_yticks([])
+        depth_colorbar = depth_figure.colorbar(depth_image_artist, ax=depth_axes, fraction=0.046, pad=0.04)
+        depth_colorbar.set_label("meters")
+        depth_figure.tight_layout()
+        depth_figure.show()
+
+    def _visualize_actor_depth(observations, step: int):
+        """Render the final 42x42 map values consumed by ActorCriticEncoder."""
+        if not args_cli.vis_depth or step % args_cli.depth_vis_interval != 0:
+            return
+        if depth_image_artist is None or depth_figure is None:
+            return
+
+        try:
+            policy_obs = observations["policy"]
+            map_scan_dim = getattr(policy_nn, "map_scan_dim", (42, 42, 1))
+            height, width, channels = (int(value) for value in map_scan_dim)
+            map_size = height * width * channels
+            if channels != 1 or height != 42 or width != 42:
+                raise ValueError(f"Expected actor depth map (42, 42, 1), got {tuple(map_scan_dim)}")
+            if policy_obs.ndim != 2 or policy_obs.shape[-1] < map_size:
+                raise ValueError(f"Invalid policy observation shape: {tuple(policy_obs.shape)}")
+
+            # ActorCriticEncoder takes the map from the observation tail and
+            # reshapes it as H x W x C. Show that exact env-0 channel in meters.
+            depth_normalized = policy_obs[0, -map_size:].reshape(height, width)
+            depth_meters = ((depth_normalized.detach().float().cpu() + 1.0) * 2.5).clamp(0.0, 5.0).numpy()
+            depth_image_artist.set_data(depth_meters)
+            depth_axes.set_title(f"Actor depth input - env 0 - step {step}")
+            depth_figure.canvas.draw_idle()
+            depth_figure.canvas.flush_events()
+        except Exception as exc:
+            print(f"[WARN] Actor depth visualization failed: {exc}")
+
+    _init_depth_visualizer()
 
     def _infer_scan_grid_shape() -> tuple[int, int] | None:
         """Infer the 2D scan grid shape (rows, cols) from encoder/env config."""
@@ -370,6 +446,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # run everything in inference mode
             with torch.inference_mode():
                 # agent stepping
+                _visualize_actor_depth(obs, timestep)
                 actions, attention_weights, *_ = policy(obs)
                 attention_weights_list.append(attention_weights.cpu().numpy())
                 if args_cli.vis_attention and attention_visualizer is not None:
@@ -392,6 +469,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # run everything in inference mode
             with torch.inference_mode():
                 # agent stepping
+                _visualize_actor_depth(obs, timestep)
                 actions = None  # 这里原始的action, *_ = policy(obs) 针对单值返回会有问题, tensor shape会减少一个维度似乎
                 raw_actions = policy(obs)
                 if (isinstance(raw_actions, tuple) or isinstance(raw_actions, list)) and len(raw_actions) > 0:
