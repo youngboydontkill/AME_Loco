@@ -110,7 +110,7 @@ class KuavoS54DepthRoughEnvCfg_PLAY(s54_cfg.KuavoS54RoughEnvCfg_PLAY):
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
-        self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
+        # self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
 
 
         self.scene.height_scanner = None

@@ -126,10 +126,28 @@ def student_depth_image(
     min_depth: float = 0.05,
     max_depth: float = 5.0,
     sensor_valid_max: float = 4.9,
+    noise_std: float = 0.02,
+    dropout_probability: float = 0.02,
 ) -> torch.Tensor:
-    """Return frozen Student depth as the original flattened ``[-1, 1]`` map."""
+    """Return noisy, hole-corrupted Student depth as a flattened ``[-1, 1]`` map."""
+    if max_depth <= min_depth:
+        raise ValueError(f"max_depth must be greater than min_depth, got {min_depth} and {max_depth}")
+    if noise_std < 0.0:
+        raise ValueError(f"noise_std must be non-negative, got {noise_std}")
+    if not 0.0 <= dropout_probability <= 1.0:
+        raise ValueError(f"dropout_probability must be in [0, 1], got {dropout_probability}")
+
     camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
-    cache_key = (getattr(env, "common_step_counter", None), sensor_cfg.name, checkpoint_path)
+    cache_key = (
+        getattr(env, "common_step_counter", None),
+        sensor_cfg.name,
+        checkpoint_path,
+        min_depth,
+        max_depth,
+        sensor_valid_max,
+        noise_std,
+        dropout_probability,
+    )
     cache = getattr(env, "_ame_student_depth_cache", None)
     if cache is not None and cache["key"] == cache_key:
         return cache["value"]
@@ -148,6 +166,95 @@ def student_depth_image(
     with torch.inference_mode():
         enhanced = _load_student(env, checkpoint_path)(model_input)[:, 0]
     enhanced = enhanced.clamp(min=min_depth, max=max_depth)
+
+    if noise_std > 0.0:
+        enhanced = (enhanced + torch.randn_like(enhanced) * noise_std).clamp(min_depth, max_depth)
+    if dropout_probability > 0.0:
+        holes = torch.rand_like(enhanced) < dropout_probability
+        enhanced = torch.where(holes, torch.full_like(enhanced, max_depth), enhanced)
+
     normalized = (2.0 * enhanced / max_depth - 1.0).reshape(depth.shape[0], -1)
     env._ame_student_depth_cache = {"key": cache_key, "value": normalized}
+    return normalized
+
+
+def mixed_student_depth_image(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg,
+    checkpoint_path: str = EDGE_STUDENT_CHECKPOINT,
+    enhance_probability: float = 0.7,
+    min_depth: float = 0.05,
+    max_depth: float = 5.0,
+    sensor_valid_max: float = 4.9,
+    noise_std: float = 0.02,
+    dropout_probability: float = 0.02,
+) -> torch.Tensor:
+    """Mix Student-enhanced and raw depth across environments for training.
+
+    The branch assignment is sampled independently per environment at every
+    simulation step. Both branches receive the same metric-depth noise and
+    synthetic hole corruption after the raw/Student depth has been selected.
+    """
+    if max_depth <= min_depth:
+        raise ValueError(f"max_depth must be greater than min_depth, got {min_depth} and {max_depth}")
+    if not 0.0 <= enhance_probability <= 1.0:
+        raise ValueError(f"enhance_probability must be in [0, 1], got {enhance_probability}")
+    if noise_std < 0.0:
+        raise ValueError(f"noise_std must be non-negative, got {noise_std}")
+    if not 0.0 <= dropout_probability <= 1.0:
+        raise ValueError(f"dropout_probability must be in [0, 1], got {dropout_probability}")
+
+    camera: TiledCamera = env.scene.sensors[sensor_cfg.name]
+    cache_key = (
+        getattr(env, "common_step_counter", None),
+        sensor_cfg.name,
+        checkpoint_path,
+        enhance_probability,
+        min_depth,
+        max_depth,
+        sensor_valid_max,
+        noise_std,
+        dropout_probability,
+    )
+    cache = getattr(env, "_ame_mixed_student_depth_cache", None)
+    if cache is not None and cache["key"] == cache_key:
+        return cache["value"]
+
+    depth = camera.data.output["distance_to_image_plane"]
+    if depth.ndim == 4 and depth.shape[-1] == 1:
+        depth = depth[..., 0]
+    if depth.ndim != 3 or tuple(depth.shape[-2:]) != (42, 42):
+        raise ValueError(f"Student expects camera depth [N, 42, 42], got {tuple(depth.shape)}")
+
+    valid = torch.isfinite(depth) & (depth >= min_depth) & (depth <= sensor_valid_max)
+    raw_depth = torch.nan_to_num(depth, nan=sensor_valid_max, posinf=sensor_valid_max, neginf=min_depth)
+    raw_depth = torch.where(valid, raw_depth, torch.full_like(raw_depth, sensor_valid_max))
+    raw_depth = raw_depth.clamp(min=min_depth, max=sensor_valid_max)
+
+    use_enhanced = torch.rand(depth.shape[0], device=depth.device) < enhance_probability
+    mixed_depth = raw_depth.clone()
+    if use_enhanced.any():
+        sim_depth = raw_depth[use_enhanced].unsqueeze(1)
+        model = _load_student(env, checkpoint_path)
+        model_input = sim_depth
+        if model.input_channels == 2:
+            model_input = torch.cat((sim_depth, valid[use_enhanced].unsqueeze(1).to(sim_depth.dtype)), dim=1)
+        elif model.input_channels != 1:
+            raise ValueError(f"Unsupported Student input channel count: {model.input_channels}")
+        with torch.inference_mode():
+            enhanced = model(model_input)[:, 0]
+        mixed_depth[use_enhanced] = enhanced.clamp(min=min_depth, max=max_depth)
+
+    if noise_std > 0.0:
+        mixed_depth = (mixed_depth + torch.randn_like(mixed_depth) * noise_std).clamp(min_depth, max_depth)
+    if dropout_probability > 0.0:
+        holes = torch.rand_like(mixed_depth) < dropout_probability
+        mixed_depth = torch.where(holes, torch.full_like(mixed_depth, max_depth), mixed_depth)
+
+    normalized = (2.0 * mixed_depth / max_depth - 1.0).reshape(depth.shape[0], -1)
+    env._ame_mixed_student_depth_cache = {
+        "key": cache_key,
+        "value": normalized,
+        "use_enhanced": use_enhanced,
+    }
     return normalized
