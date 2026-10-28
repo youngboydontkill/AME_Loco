@@ -4,14 +4,83 @@ from __future__ import annotations
 
 import numpy as np
 import scipy.interpolate as interpolate
+import trimesh
 from typing import TYPE_CHECKING
 
 from isaaclab.terrains.height_field.utils import height_field_to_mesh
 
 if TYPE_CHECKING:
     from . import loco_hf_terrains_cfg
+    from .loco_hf_terrains_cfg import MeshSteppingStonesTerrainCfg
 
 from random import randint
+
+
+def stepping_stones_mesh_terrain(
+    difficulty: float, cfg: MeshSteppingStonesTerrainCfg
+) -> tuple[list[trimesh.Trimesh], np.ndarray]:
+    """Build stepping stones as a low-poly static triangle mesh."""
+    stone_width = cfg.stone_width_range[1] - difficulty * (
+        cfg.stone_width_range[1] - cfg.stone_width_range[0]
+    )
+    stone_distance = cfg.stone_distance_range[0] + difficulty * (
+        cfg.stone_distance_range[1] - cfg.stone_distance_range[0]
+    )
+    usable_x = cfg.size[0] - 2.0 * cfg.border_width
+    usable_y = cfg.size[1] - 2.0 * cfg.border_width
+    if usable_x <= 0.0 or usable_y <= 0.0:
+        raise ValueError("border_width must be smaller than half of each terrain dimension")
+
+    rng = np.random.default_rng(getattr(cfg, "seed", None))
+    hole_z = cfg.holes_depth
+    meshes: list[trimesh.Trimesh] = [
+        trimesh.creation.box(
+            extents=(cfg.size[0], cfg.size[1], 0.1),
+            transform=trimesh.transformations.translation_matrix(
+                (cfg.size[0] / 2.0, cfg.size[1] / 2.0, hole_z - 0.05)
+            ),
+        )
+    ]
+
+    def add_box(x0: float, y0: float, width: float, length: float, top_z: float) -> None:
+        height = max(top_z - hole_z, 0.01)
+        center = (x0 + width / 2.0, y0 + length / 2.0, hole_z + height / 2.0)
+        meshes.append(
+            trimesh.creation.box(
+                extents=(width, length, height),
+                transform=trimesh.transformations.translation_matrix(center),
+            )
+        )
+
+    platform_width = min(cfg.platform_width, usable_x, usable_y)
+    platform_x0 = (cfg.size[0] - platform_width) / 2.0
+    platform_y0 = (cfg.size[1] - platform_width) / 2.0
+    platform_x1 = platform_x0 + platform_width
+    platform_y1 = platform_y0 + platform_width
+
+    # Lay out staggered rows of square stones, leaving the configured border clear.
+    step = stone_width + stone_distance
+    y = cfg.border_width
+    row = 0
+    while y + stone_width <= cfg.size[1] - cfg.border_width + 1e-9:
+        x = cfg.border_width - (step / 2.0 if row % 2 else 0.0)
+        while x < cfg.size[0] - cfg.border_width:
+            x0 = max(x, cfg.border_width)
+            x1 = min(x + stone_width, cfg.size[0] - cfg.border_width)
+            y0 = max(y, cfg.border_width)
+            y1 = min(y + stone_width, cfg.size[1] - cfg.border_width)
+            overlaps_platform = x0 < platform_x1 and x1 > platform_x0 and y0 < platform_y1 and y1 > platform_y0
+            if x1 > x0 and y1 > y0 and not overlaps_platform:
+                top_z = rng.uniform(-cfg.stone_height_max, cfg.stone_height_max)
+                add_box(x0, y0, x1 - x0, y1 - y0, top_z)
+            x += step
+        y += step
+        row += 1
+
+    add_box(platform_x0, platform_y0, platform_width, platform_width, 0.0)
+    origin = np.array((cfg.size[0] / 2.0, cfg.size[1] / 2.0, 0.0))
+    return meshes, origin
+
 
 @height_field_to_mesh
 def stones_bridge_terrain(difficulty: float, cfg: loco_hf_terrains_cfg.HfStonesBridgeTerrainCfg) -> np.array:

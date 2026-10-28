@@ -48,7 +48,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
         # "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
         #     proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
         # ),
-        "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+        "mesh_steppingstones": MeshSteppingStonesTerrainCfg(
             proportion=0.2, stone_height_max=0.05, stone_width_range=(0.25, 0.5), stone_distance_range=(0.05, 0.25), platform_width=2.0,
             holes_depth=-2.0, border_width=0.25
         ),

@@ -1,9 +1,30 @@
 from dataclasses import MISSING
 
 from isaaclab.utils import configclass
+from isaaclab.terrains.sub_terrain_cfg import SubTerrainBaseCfg
 
 from isaaclab.terrains.height_field import HfTerrainBaseCfg
 from . import loco_hf_terrains
+
+
+@configclass
+class MeshSteppingStonesTerrainCfg(SubTerrainBaseCfg):
+    """Configuration for stepping stones generated as a low-poly triangle mesh."""
+
+    function = loco_hf_terrains.stepping_stones_mesh_terrain
+
+    stone_height_max: float = MISSING
+    """Maximum absolute height variation of each stone (in m)."""
+    stone_width_range: tuple[float, float] = MISSING
+    """Minimum and maximum stone width (in m)."""
+    stone_distance_range: tuple[float, float] = MISSING
+    """Minimum and maximum distance between stones (in m)."""
+    holes_depth: float = -10.0
+    """Depth of the floor between stones (in m)."""
+    platform_width: float = 1.0
+    """Width of the square platform at the center of the terrain (in m)."""
+    border_width: float = 0.0
+    """Width of the clear border around the stone field (in m)."""
 
 @configclass
 class HfStonesBridgeTerrainCfg(HfTerrainBaseCfg):
