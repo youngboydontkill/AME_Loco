@@ -13,6 +13,7 @@ from .velocity_env_cfg_s54_depth import (
     KuavoS54DepthRoughEnvCfg_PLAY,
     KuavoS54DepthSceneCfg,
 )
+from . import velocity_env_cfg_s54 as s54_cfg
 from ..mdp.student_depth import EDGE_STUDENT_CHECKPOINT
 
 
@@ -47,8 +48,8 @@ class MixedEnhancedDepthObservationsCfg(DepthObservationsCfg):
                 "sensor_cfg": SceneEntityCfg("depth_camera"),
                 "checkpoint_path": EDGE_STUDENT_CHECKPOINT,
                 "enhance_probability": 0.7,
-                "noise_std": 0.02,
-                "dropout_probability": 0.02,
+                "noise_std": 0.0,
+                "dropout_probability": 0.0,
             },
         )
 
@@ -80,3 +81,71 @@ class KuavoS54DepthEnhanceEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
+
+
+@configclass
+class DepthDistillationObservationsCfg(EnhancedDepthObservationsCfg):
+    """Enhanced depth for the student and the original height scan for its teacher."""
+
+    @configclass
+    class TeacherCfg(s54_cfg._g1_cfg.ObservationsCfg.PolicyCfg):
+        pass
+
+    @configclass
+    class TeacherCriticCfg(s54_cfg._g1_cfg.ObservationsCfg.CriticCfg):
+        pass
+
+    teacher: TeacherCfg = TeacherCfg()
+    teacher_critic: TeacherCriticCfg = TeacherCriticCfg()
+
+
+@configclass
+class KuavoS54DepthDistillEnvCfg(KuavoS54DepthRoughEnvCfg):
+    """Training environment that exposes both student and teacher observations."""
+
+    observations: DepthDistillationObservationsCfg = DepthDistillationObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.height_scanner = s54_cfg._make_scene(self.scene.num_envs).height_scanner
+
+
+@configclass
+class KuavoS54DepthDistillEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
+    """Play configuration for evaluating the distilled depth student."""
+
+    observations: DepthDistillationObservationsCfg = DepthDistillationObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.height_scanner = s54_cfg._make_scene(self.scene.num_envs).height_scanner
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+
+@configclass
+class RawDepthDistillationObservationsCfg(DepthDistillationObservationsCfg):
+    """Raw camera depth for the student, retaining matching proprioceptive terms."""
+
+    @configclass
+    class PolicyCfg(DepthObservationsCfg.PolicyCfg):
+        pass
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class KuavoS54DepthRawDistillEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
+    """Play configuration for testing the student with unenhanced camera depth."""
+
+    observations: RawDepthDistillationObservationsCfg = RawDepthDistillationObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.height_scanner = s54_cfg._make_scene(self.scene.num_envs).height_scanner
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)

@@ -10,6 +10,7 @@ import torch.nn as nn
 from torch.distributions import Normal
 
 from rsl_rl.networks import MLP, EmpiricalNormalization
+from rsl_rl.modules.actor_critic_encoder import ActorCriticEncoder
 
 
 class StudentTeacher(nn.Module):
@@ -204,3 +205,57 @@ class StudentTeacher(nn.Module):
             return True  # training resumes
         else:
             raise ValueError("state_dict does not contain student or teacher parameters")
+
+
+class StudentTeacherEncoder(StudentTeacher):
+    """Student MLP distilled from an AME terrain-encoder actor."""
+
+    def __init__(self, obs, obs_groups, num_actions, teacher_map_scan_dim=(33, 21, 3), **kwargs):
+        super().__init__(obs, obs_groups, num_actions, **kwargs)
+        self.teacher = ActorCriticEncoder(
+            obs,
+            {"policy": ["teacher"], "critic": ["teacher_critic"]},
+            num_actions,
+            actor_obs_normalization=False,
+            critic_obs_normalization=False,
+            actor_hidden_dims=[512, 256, 128],
+            critic_hidden_dims=[512, 256, 128],
+            activation="elu",
+            init_noise_std=1.0,
+            map_scan_dim=teacher_map_scan_dim,
+            cnn_downsample=True,
+        )
+        for parameter in self.teacher.parameters():
+            parameter.requires_grad_(False)
+        self.teacher.eval()
+
+    def evaluate(self, obs):
+        with torch.no_grad():
+            actions, _ = self.teacher.act_inference({"teacher": obs["teacher"]})
+        return actions
+
+    @property
+    def action_std(self):
+        """Compatibility statistic for the generic runner logger.
+
+        DAgger executes ``act_inference`` deterministically and therefore does
+        not create a Normal distribution.  Keep the configured noise value
+        available for logging without using it during rollout.
+        """
+        if self.noise_std_type == "scalar":
+            return self.std
+        return torch.exp(self.log_std)
+
+    def load_state_dict(self, state_dict, strict=True):
+        if "model_state_dict" in state_dict:
+            state_dict = state_dict["model_state_dict"]
+        if any(key.startswith("student.") for key in state_dict):
+            nn.Module.load_state_dict(self, state_dict, strict=strict)
+            self.loaded_teacher = True
+            self.teacher.eval()
+            self.teacher_obs_normalizer.eval()
+            return True
+        self.teacher.load_state_dict(state_dict, strict=strict)
+        self.loaded_teacher = True
+        self.teacher.eval()
+        return False

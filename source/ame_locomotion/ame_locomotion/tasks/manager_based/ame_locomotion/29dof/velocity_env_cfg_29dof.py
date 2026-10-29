@@ -611,24 +611,24 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #     border_width=1.0,
                 #     holes=False,
                 # ),
-                # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-                #     proportion=0.3,
-                #     step_height_range=(0.15, 0.15),
-                #     step_width=0.3,
-                #     platform_width=3.0,
-                #     border_width=1.0,
-                #     holes=False,
-                # ),
+                "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+                    proportion=0.3,
+                    step_height_range=(0.1, 0.1),
+                    step_width=0.3,
+                    platform_width=3.0,
+                    border_width=1.0,
+                    holes=False,
+                ),
                 # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
                 #     proportion=0.2, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
                 # ),
                 # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
                 #     proportion=0.1, noise_range=(0.02, 0.1), noise_step=0.01, border_width=0.25
                 # ),
-                "mesh_steppingstones": terrain_gen.MeshSteppingStonesTerrainCfg(
-                    proportion=1.0, stone_height_max=0.0, stone_width_range=(0.25, 0.25), stone_distance_range=(0.2, 0.2), platform_width=2.0,
-                    holes_depth=-2.0, border_width=0.25
-                ),
+                # "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+                #     proportion=1.0, stone_height_max=0.0, stone_width_range=(0.27, 0.27), stone_distance_range=(0.2, 0.2), platform_width=2.0,
+                #     holes_depth=-2.0, border_width=0.25
+                # ),
                 # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
                 #     proportion=1.0, platform_width=2.0, border_width=0.25, holes_depth=-2.0,
                 #     stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2),

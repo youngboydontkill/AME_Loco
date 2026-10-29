@@ -79,3 +79,45 @@ gym.register(
         ),
     },
 )
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-Enhance-DAgger-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthDistillEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_distill_cfg:KuavoS54DepthDistillRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-Enhance-DAgger-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthDistillEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_distill_cfg:KuavoS54DepthDistillRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-DAgger-Raw-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthRawDistillEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_distill_cfg:KuavoS54DepthDistillRunnerCfg"
+        ),
+    },
+)
