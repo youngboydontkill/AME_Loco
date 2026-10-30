@@ -1,6 +1,7 @@
 """S54 playback configuration with frozen Student depth enhancement."""
 import math
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -15,6 +16,24 @@ from .velocity_env_cfg_s54_depth import (
 )
 from . import velocity_env_cfg_s54 as s54_cfg
 from ..mdp.student_depth import EDGE_STUDENT_CHECKPOINT
+
+
+@configclass
+class DepthEnhanceEventCfg(s54_cfg._g1_cfg.EventCfg):
+    """Reset events for the depth enhancement domain randomization."""
+
+    randomize_depth_camera = EventTerm(
+        func=mdp.randomize_camera_position,
+        mode="reset",
+        params={
+            "sensor_cfg": SceneEntityCfg("depth_camera"),
+            "position_range": {
+                "x": (-0.00, 0.01),
+                "y": (-0.01, 0.01),
+                "z": (-0.01, 0.01),
+            },
+        },
+    )
 
 
 @configclass
@@ -62,6 +81,7 @@ class KuavoS54EnhanceEnvCfg(KuavoS54DepthRoughEnvCfg):
 
     scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=2048, env_spacing=2.5)
     observations: MixedEnhancedDepthObservationsCfg = MixedEnhancedDepthObservationsCfg()
+    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -73,6 +93,7 @@ class KuavoS54DepthEnhanceEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
 
     scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=50, env_spacing=2.5)
     observations: EnhancedDepthObservationsCfg = EnhancedDepthObservationsCfg()
+    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -104,6 +125,7 @@ class KuavoS54DepthDistillEnvCfg(KuavoS54DepthRoughEnvCfg):
     """Training environment that exposes both student and teacher observations."""
 
     observations: DepthDistillationObservationsCfg = DepthDistillationObservationsCfg()
+    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -115,6 +137,7 @@ class KuavoS54DepthDistillEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
     """Play configuration for evaluating the distilled depth student."""
 
     observations: DepthDistillationObservationsCfg = DepthDistillationObservationsCfg()
+    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -141,6 +164,7 @@ class KuavoS54DepthRawDistillEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
     """Play configuration for testing the student with unenhanced camera depth."""
 
     observations: RawDepthDistillationObservationsCfg = RawDepthDistillationObservationsCfg()
+    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
         super().__post_init__()
