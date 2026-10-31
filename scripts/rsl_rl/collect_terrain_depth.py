@@ -154,7 +154,7 @@ def main(env_cfg, agent_cfg):
     env_cfg.scene.depth_capture_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/waist_yaw_link/depth_capture_camera",
         update_period=0.02,
-        update_latest_camera_pose=True,
+        update_latest_camera_pose=False,  # 可视化的时候才打开，不然增大训练环境的计算量
         height=480,
         width=640,
         data_types=["distance_to_image_plane"],

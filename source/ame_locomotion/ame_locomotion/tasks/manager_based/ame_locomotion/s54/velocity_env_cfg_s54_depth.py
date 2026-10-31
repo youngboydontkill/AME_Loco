@@ -30,7 +30,7 @@ class KuavoS54DepthSceneCfg(_g1_cfg.MySceneCfg):
         # The camera is rigidly attached to the robot.  Keep its world pose in
         # sync with each rendered depth image so consumers that unproject the
         # image (e.g. attention visualization) use the current camera pose.
-        update_latest_camera_pose=True,
+        update_latest_camera_pose=False,  # 可视化的时候才打开，不然增大训练环境的计算量
         height=42,
         width=42,
         data_types=["distance_to_image_plane"],
