@@ -118,6 +118,25 @@ class GRUMixedEnhancedDepthObservationsCfg(AMPMixedEnhancedDepthObservationsCfg)
 
 
 @configclass
+class GRURawDepthAMPObservationsCfg(AMPMixedEnhancedDepthObservationsCfg):
+    """AMP observations with five raw-depth and proprioception frames."""
+
+    @configclass
+    class PolicyCfg(DepthObservationsCfg.PolicyCfg):
+        depth_image = ObsTerm(
+            func=mdp.depth_image,
+            params={"sensor_cfg": SceneEntityCfg("depth_camera")},
+        )
+
+        def __post_init__(self):
+            super().__post_init__()
+            self.history_length = 5
+            self.flatten_history_dim = False
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
 class GRUEnhancedDepthObservationsCfg(EnhancedDepthObservationsCfg):
     """Enhanced depth observations with a five-frame policy history."""
 
@@ -162,6 +181,13 @@ class KuavoS54DepthEnhanceGRUAMPEnvCfg(KuavoS54DepthEnhanceAMPEnvCfg):
 
 
 @configclass
+class KuavoS54DepthGRURawAMPEnvCfg(KuavoS54DepthEnhanceGRUAMPEnvCfg):
+    """GRU AMP training on raw depth without Student enhancement."""
+
+    observations: GRURawDepthAMPObservationsCfg = GRURawDepthAMPObservationsCfg()
+
+
+@configclass
 class KuavoS54DepthEnhanceEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
     """Playback configuration for AME-Kuavo-S54-Depth-Play-Enhance-v0."""
 
@@ -192,6 +218,13 @@ class KuavoS54DepthEnhanceGRUAMPEnvCfg_PLAY(KuavoS54DepthEnhanceAMPEnvCfg_PLAY):
     def __post_init__(self):
         self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
         super().__post_init__()
+
+
+@configclass
+class KuavoS54DepthGRURawAMPEnvCfg_PLAY(KuavoS54DepthEnhanceGRUAMPEnvCfg_PLAY):
+    """GRU AMP playback on raw depth without Student enhancement."""
+
+    observations: GRURawDepthAMPObservationsCfg = GRURawDepthAMPObservationsCfg()
 
 
 @configclass

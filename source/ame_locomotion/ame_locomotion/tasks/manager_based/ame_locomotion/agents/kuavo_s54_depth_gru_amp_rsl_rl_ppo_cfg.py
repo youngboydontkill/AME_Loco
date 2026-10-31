@@ -54,3 +54,17 @@ class KuavoS54DepthGRUPlayRunnerCfg(KuavoS54DepthAMEPPORunnerCfg):
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
+
+
+@configclass
+class KuavoS54DepthGRURawAMPPOCfg(KuavoS54DepthGRUAMPPOCfg):
+    """Runner settings for raw-depth GRU AMP training."""
+
+    experiment_name = "kuavo_s54_depth_gru_raw_amp"
+
+
+@configclass
+class KuavoS54DepthGRURawPlayRunnerCfg(KuavoS54DepthGRUPlayRunnerCfg):
+    """Playback runner settings for the raw-depth GRU AMP policy."""
+
+    experiment_name = "kuavo_s54_depth_gru_raw_amp"

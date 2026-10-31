@@ -137,6 +137,34 @@ gym.register(
 )
 
 gym.register(
+    id="GRU-Kuavo-S54-Depth-AMP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthGRURawAMPEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_gru_amp_rsl_rl_ppo_cfg:KuavoS54DepthGRURawAMPPOCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="GRU-Kuavo-S54-Depth-AMP-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthGRURawAMPEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_gru_amp_rsl_rl_ppo_cfg:KuavoS54DepthGRURawPlayRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="AME-Kuavo-S54-Depth-Enhance-DAgger-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
