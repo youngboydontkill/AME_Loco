@@ -81,6 +81,62 @@ gym.register(
 )
 
 gym.register(
+    id="AME-Kuavo-S54-Depth-Enhance-AMP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthEnhanceAMPEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_amp_rsl_rl_ppo_cfg:KuavoS54DepthAMPPOCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="AME-Kuavo-S54-Depth-Enhance-AMP-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthEnhanceAMPEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_ame_rsl_rl_ppo_cfg:KuavoS54DepthAMEPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="GRU-Kuavo-S54-Depth-Enhance-AMP-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthEnhanceGRUAMPEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_gru_amp_rsl_rl_ppo_cfg:KuavoS54DepthGRUAMPPOCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="GRU-Kuavo-S54-Depth-Enhance-AMP-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthEnhanceGRUAMPEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_gru_amp_rsl_rl_ppo_cfg:KuavoS54DepthGRUPlayRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="AME-Kuavo-S54-Depth-Enhance-DAgger-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

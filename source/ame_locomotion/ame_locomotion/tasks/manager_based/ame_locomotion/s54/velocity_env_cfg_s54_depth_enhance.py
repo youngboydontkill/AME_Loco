@@ -1,7 +1,9 @@
 """S54 playback configuration with frozen Student depth enhancement."""
+import copy
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
@@ -16,6 +18,7 @@ from .velocity_env_cfg_s54_depth import (
 )
 from . import velocity_env_cfg_s54 as s54_cfg
 from ..mdp.student_depth import EDGE_STUDENT_CHECKPOINT
+from ..terrains.gru_depth_terrain_cfg import GRU_DEPTH_TERRAINS_CFG
 
 
 @configclass
@@ -76,6 +79,59 @@ class MixedEnhancedDepthObservationsCfg(DepthObservationsCfg):
 
 
 @configclass
+class AMPMixedEnhancedDepthObservationsCfg(MixedEnhancedDepthObservationsCfg):
+    """Mixed enhanced depth with a separate noise-free AMP feature group."""
+
+    @configclass
+    class AMPStateCfg(ObsGroup):
+        state = ObsTerm(
+            func=mdp.amp_state,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+                "end_effector_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=["leg_l6_link", "leg_r6_link", "zarm_l7_link", "zarm_r7_link"],
+                    preserve_order=True,
+                ),
+            },
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    amp_state: AMPStateCfg = AMPStateCfg()
+
+
+@configclass
+class GRUMixedEnhancedDepthObservationsCfg(AMPMixedEnhancedDepthObservationsCfg):
+    """AMP observations with a five-frame policy history."""
+
+    @configclass
+    class PolicyCfg(MixedEnhancedDepthObservationsCfg.PolicyCfg):
+        def __post_init__(self):
+            super().__post_init__()
+            self.history_length = 5
+            self.flatten_history_dim = False
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class GRUEnhancedDepthObservationsCfg(EnhancedDepthObservationsCfg):
+    """Enhanced depth observations with a five-frame policy history."""
+
+    @configclass
+    class PolicyCfg(EnhancedDepthObservationsCfg.PolicyCfg):
+        def __post_init__(self):
+            super().__post_init__()
+            self.history_length = 5
+            self.flatten_history_dim = False
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
 class KuavoS54EnhanceEnvCfg(KuavoS54DepthRoughEnvCfg):
     """Training configuration for mixed raw/Student depth inputs."""
 
@@ -84,6 +140,24 @@ class KuavoS54EnhanceEnvCfg(KuavoS54DepthRoughEnvCfg):
     events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
 
     def __post_init__(self):
+        super().__post_init__()
+
+
+@configclass
+class KuavoS54DepthEnhanceAMPEnvCfg(KuavoS54EnhanceEnvCfg):
+    """AMP training configuration for mixed raw/Student-enhanced depth."""
+
+    observations: AMPMixedEnhancedDepthObservationsCfg = AMPMixedEnhancedDepthObservationsCfg()
+
+
+@configclass
+class KuavoS54DepthEnhanceGRUAMPEnvCfg(KuavoS54DepthEnhanceAMPEnvCfg):
+    """GRU AMP training configuration with five-frame policy observations."""
+
+    observations: GRUMixedEnhancedDepthObservationsCfg = GRUMixedEnhancedDepthObservationsCfg()
+
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
         super().__post_init__()
 
 
@@ -102,6 +176,22 @@ class KuavoS54DepthEnhanceEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
+
+
+@configclass
+class KuavoS54DepthEnhanceAMPEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
+    """Playback configuration for the AMP-trained enhanced-depth policy."""
+
+
+@configclass
+class KuavoS54DepthEnhanceGRUAMPEnvCfg_PLAY(KuavoS54DepthEnhanceAMPEnvCfg_PLAY):
+    """Playback configuration for the GRU AMP policy."""
+
+    observations: GRUEnhancedDepthObservationsCfg = GRUEnhancedDepthObservationsCfg()
+
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
+        super().__post_init__()
 
 
 @configclass

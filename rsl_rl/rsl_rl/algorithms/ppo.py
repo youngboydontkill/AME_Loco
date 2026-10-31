@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from itertools import chain
 
+from rsl_rl.algorithms.amp import AMPReward
 from rsl_rl.modules import ActorCritic, ActorCriticEncoder
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
@@ -45,6 +46,9 @@ class PPO:
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
+        # Adversarial motion prior
+        amp_cfg: dict | None = None,
+        velocity_loss_coef: float = 0.0,
     ):
         # device-related parameters
         self.device = device
@@ -115,6 +119,10 @@ class PPO:
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
+        self.amp = AMPReward(amp_cfg, self.device, multi_gpu_cfg) if amp_cfg is not None else None
+        self.mean_amp_reward = 0.0
+        self.velocity_loss_coef = velocity_loss_coef
+
     def init_storage(self, training_type, num_envs, num_transitions_per_env, obs, actions_shape):
         # create rollout storage
         self.storage = RolloutStorage(
@@ -149,6 +157,25 @@ class PPO:
         # Note: we clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
+
+        if self.amp is not None:
+            if "amp_state" not in self.transition.observations or "amp_state" not in obs:
+                raise KeyError("AMP requires the environment to provide an 'amp_state' observation group.")
+            current_states = self.transition.observations["amp_state"]
+            next_states = obs["amp_state"]
+            if current_states.shape[-1] != self.amp.expert.feature_dim:
+                raise ValueError(
+                    "AMP feature dimension mismatch: environment provides "
+                    f"{current_states.shape[-1]}, dataset provides {self.amp.expert.feature_dim}."
+                )
+            valid = ~dones.bool().view(-1)
+            amp_rewards = torch.zeros(current_states.shape[0], device=current_states.device)
+            if self.amp.replay.size >= self.amp.batch_size:
+                amp_rewards[valid] = self.amp.reward(current_states[valid], next_states[valid])
+            if valid.any():
+                self.amp.replay.add(current_states[valid], next_states[valid])
+            self.mean_amp_reward = amp_rewards.mean().item()
+            self.transition.rewards += self.amp.reward_coef * amp_rewards.view_as(self.transition.rewards)
 
         # Compute the intrinsic rewards and add to extrinsic rewards
         if self.rnd:
@@ -189,6 +216,7 @@ class PPO:
             mean_symmetry_loss = 0
         else:
             mean_symmetry_loss = None
+        mean_velocity_loss = 0.0 if self.velocity_loss_coef > 0 else None
 
         # generator for mini batches
         if self.policy.is_recurrent:
@@ -314,6 +342,13 @@ class PPO:
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
+            if self.velocity_loss_coef > 0 and hasattr(self.policy, "compute_auxiliary_losses"):
+                auxiliary_losses = self.policy.compute_auxiliary_losses(obs_batch)
+                velocity_loss = auxiliary_losses.get("velocity")
+                if velocity_loss is not None:
+                    loss += self.velocity_loss_coef * velocity_loss
+                    mean_velocity_loss += velocity_loss.item()
+
             # Symmetry loss
             if self.symmetry:
                 # obtain the symmetric actions
@@ -425,6 +460,12 @@ class PPO:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
+        if mean_velocity_loss is not None:
+            loss_dict["velocity"] = mean_velocity_loss / num_updates
+
+        if self.amp is not None:
+            loss_dict.update(self.amp.update())
+            loss_dict["amp_reward"] = self.mean_amp_reward
 
         return loss_dict
 

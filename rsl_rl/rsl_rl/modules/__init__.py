@@ -9,9 +9,10 @@ from .actor_critic import ActorCritic
 from .actor_critic_recurrent import ActorCriticRecurrent
 from .actor_critic_encoder import ActorCriticEncoder
 from .actor_critic_cnn_mlp import ActorCriticCNNMLP
+from .actor_critic_gru import ActorCriticGRU
 from .rnd import *
 from .student_teacher import StudentTeacher, StudentTeacherEncoder
 from .student_teacher_recurrent import StudentTeacherRecurrent
 from .symmetry import *
 
-__all__ = ["ActorCritic", "ActorCriticRecurrent", "ActorCriticEncoder", "ActorCriticCNNMLP", "StudentTeacher", "StudentTeacherEncoder", "StudentTeacherRecurrent"]
+__all__ = ["ActorCritic", "ActorCriticRecurrent", "ActorCriticEncoder", "ActorCriticCNNMLP", "ActorCriticGRU", "StudentTeacher", "StudentTeacherEncoder", "StudentTeacherRecurrent"]

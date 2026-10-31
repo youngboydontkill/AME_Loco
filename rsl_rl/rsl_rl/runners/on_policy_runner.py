@@ -20,6 +20,7 @@ from rsl_rl.modules import (
     ActorCriticRecurrent,
     ActorCriticEncoder,
     ActorCriticCNNMLP,
+    ActorCriticGRU,
     resolve_rnd_config,
     resolve_symmetry_config,
 )
@@ -310,6 +311,9 @@ class OnPolicyRunner:
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
             saved_dict["rnd_optimizer_state_dict"] = self.alg.rnd_optimizer.state_dict()
+        if getattr(self.alg, "amp", None) is not None:
+            saved_dict["amp_discriminator_state_dict"] = self.alg.amp.discriminator.state_dict()
+            saved_dict["amp_optimizer_state_dict"] = self.alg.amp.optimizer.state_dict()
         torch.save(saved_dict, path)
 
         # upload model to external logging service
@@ -323,6 +327,10 @@ class OnPolicyRunner:
         # -- Load RND model if used
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
+        if getattr(self.alg, "amp", None) is not None:
+            if "amp_discriminator_state_dict" not in loaded_dict:
+                raise ValueError("Cannot resume AMP training from a checkpoint without discriminator state.")
+            self.alg.amp.discriminator.load_state_dict(loaded_dict["amp_discriminator_state_dict"])
         # -- load optimizer if used
         if load_optimizer and resumed_training:
             # -- algorithm optimizer
@@ -330,6 +338,8 @@ class OnPolicyRunner:
             # -- RND optimizer if used
             if hasattr(self.alg, "rnd") and self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+            if getattr(self.alg, "amp", None) is not None:
+                self.alg.amp.optimizer.load_state_dict(loaded_dict["amp_optimizer_state_dict"])
         # -- load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]
@@ -347,6 +357,8 @@ class OnPolicyRunner:
         # -- RND
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.train()
+        if getattr(self.alg, "amp", None) is not None:
+            self.alg.amp.discriminator.train()
 
     def eval_mode(self):
         # -- PPO
@@ -354,6 +366,8 @@ class OnPolicyRunner:
         # -- RND
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.eval()
+        if getattr(self.alg, "amp", None) is not None:
+            self.alg.amp.discriminator.eval()
 
     def add_git_repo_to_log(self, repo_file_path):
         self.git_status_repos.append(repo_file_path)
@@ -428,7 +442,7 @@ class OnPolicyRunner:
 
         # initialize the actor-critic
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))
-        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticEncoder = actor_critic_class(
+        actor_critic: ActorCritic | ActorCriticRecurrent | ActorCriticEncoder | ActorCriticGRU = actor_critic_class(
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 

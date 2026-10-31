@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
+from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import RayCaster
@@ -22,6 +23,39 @@ def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
     phase[:, 0] = torch.sin(global_phase * torch.pi * 2.0)
     phase[:, 1] = torch.cos(global_phase * torch.pi * 2.0)
     return phase
+
+
+def amp_state(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    end_effector_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return noise-free body-frame motion features for the AMP discriminator."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    root_pos_w = asset.data.root_pos_w.unsqueeze(1)
+    relative_pos_w = asset.data.body_pos_w[:, end_effector_cfg.body_ids] - root_pos_w
+    relative_vel_w = (
+        asset.data.body_lin_vel_w[:, end_effector_cfg.body_ids]
+        - asset.data.root_lin_vel_w.unsqueeze(1)
+        - torch.cross(
+            asset.data.root_ang_vel_w.unsqueeze(1).expand_as(relative_pos_w), relative_pos_w, dim=-1
+        )
+    )
+    root_quat = asset.data.root_quat_w.unsqueeze(1).expand(-1, len(end_effector_cfg.body_ids), -1).reshape(-1, 4)
+    end_effector_pos_b = quat_apply_inverse(root_quat, relative_pos_w.reshape(-1, 3)).view(env.num_envs, -1)
+    end_effector_vel_b = quat_apply_inverse(root_quat, relative_vel_w.reshape(-1, 3)).view(env.num_envs, -1)
+    return torch.cat(
+        (
+            asset.data.root_lin_vel_b,
+            asset.data.root_ang_vel_b,
+            asset.data.projected_gravity_b,
+            asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids],
+            asset.data.joint_vel[:, asset_cfg.joint_ids],
+            end_effector_pos_b,
+            end_effector_vel_b,
+        ),
+        dim=-1,
+    )
 
 
 def ray_hits_s(
