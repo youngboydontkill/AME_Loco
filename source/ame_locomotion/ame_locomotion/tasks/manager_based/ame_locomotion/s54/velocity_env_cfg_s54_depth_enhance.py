@@ -360,7 +360,7 @@ class KuavoS54DepthCNNMLPDistillEnvCfg_PLAY(KuavoS54DepthDistillEnvCfg_PLAY):
         self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
         super().__post_init__()
         ranges = self.commands.base_velocity.ranges
-        ranges.lin_vel_x = (0.0, 1.0)
+        ranges.lin_vel_x = (1.0, 1.0)
         ranges.lin_vel_y = (0.0, 0.0)
         ranges.ang_vel_z = (-0.0, 0.0)
 

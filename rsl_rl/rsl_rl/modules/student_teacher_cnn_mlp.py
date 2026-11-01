@@ -20,11 +20,13 @@ class StudentTeacherCNNMLP(nn.Module):
         num_actions,
         student_depth_group="depth",
         student_props_group="props",
+        critic_group="teacher_critic",
         teacher_map_scan_dim=(33, 21, 3),
         depth_feature_dim=128,
         props_hidden_dims=(512, 256),
         props_feature_dim=128,
         actor_hidden_dims=(512, 256, 128),
+        critic_hidden_dims=(512, 256, 128),
         velocity_hidden_dims=(128,),
         activation="elu",
         init_noise_std=0.1,
@@ -37,6 +39,7 @@ class StudentTeacherCNNMLP(nn.Module):
         self.obs_groups = obs_groups
         self.student_depth_group = student_depth_group
         self.student_props_group = student_props_group
+        self.critic_group = critic_group
         depth_shape = obs[student_depth_group].shape[1:]
         props_shape = obs[student_props_group].shape[1:]
         if len(depth_shape) != 1 or depth_shape[0] != 42 * 42:
@@ -66,6 +69,8 @@ class StudentTeacherCNNMLP(nn.Module):
             self.props_history_length * props_dim, props_feature_dim, list(props_hidden_dims), activation
         )
         self.actor = MLP(depth_feature_dim + props_feature_dim, num_actions, list(actor_hidden_dims), activation)
+        critic_dim = obs[critic_group].shape[-1]
+        self.critic = MLP(critic_dim, 1, list(critic_hidden_dims), activation)
         self.velocity_head = MLP(props_feature_dim, 3, list(velocity_hidden_dims), activation)
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
@@ -114,6 +119,9 @@ class StudentTeacherCNNMLP(nn.Module):
             actions, _ = self.teacher.act_inference({"teacher": obs["teacher"]})
         return actions
 
+    def evaluate_value(self, obs):
+        return self.critic(obs[self.critic_group])
+
     def compute_auxiliary_losses(self, obs):
         _, props_features = self._encode_student(obs)
         predicted_velocity = self.velocity_head(props_features)
@@ -153,7 +161,13 @@ class StudentTeacherCNNMLP(nn.Module):
         if "model_state_dict" in state_dict:
             state_dict = state_dict["model_state_dict"]
         if any(key.startswith("teacher.") for key in state_dict):
-            nn.Module.load_state_dict(self, state_dict, strict=strict)
+            incompatible = nn.Module.load_state_dict(self, state_dict, strict=False)
+            missing_keys = [key for key in incompatible.missing_keys if not key.startswith("critic.")]
+            if strict and (missing_keys or incompatible.unexpected_keys):
+                raise RuntimeError(
+                    "Error(s) in loading state_dict: "
+                    f"missing keys={missing_keys}, unexpected keys={incompatible.unexpected_keys}"
+                )
             self.loaded_teacher = True
             self.teacher.eval()
             return True

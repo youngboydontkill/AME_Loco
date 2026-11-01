@@ -132,7 +132,7 @@ class ActorCriticCNNProps(nn.Module):
             raise TypeError("Student checkpoint must contain a model_state_dict mapping")
 
         current_state = self.state_dict()
-        student_prefixes = ("depth_encoder.", "props_encoder.", "actor.", "std")
+        student_prefixes = ("depth_encoder.", "props_encoder.", "actor.", "critic.", "std")
         student_state = {
             key: value
             for key, value in state_dict.items()

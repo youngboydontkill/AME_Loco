@@ -315,6 +315,8 @@ class OnPolicyRunner:
         if getattr(self.alg, "amp", None) is not None:
             saved_dict["amp_discriminator_state_dict"] = self.alg.amp.discriminator.state_dict()
             saved_dict["amp_optimizer_state_dict"] = self.alg.amp.optimizer.state_dict()
+        if hasattr(self.alg, "value_optimizer"):
+            saved_dict["value_optimizer_state_dict"] = self.alg.value_optimizer.state_dict()
         torch.save(saved_dict, path)
 
         # upload model to external logging service
@@ -341,6 +343,8 @@ class OnPolicyRunner:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
             if getattr(self.alg, "amp", None) is not None:
                 self.alg.amp.optimizer.load_state_dict(loaded_dict["amp_optimizer_state_dict"])
+            if hasattr(self.alg, "value_optimizer") and "value_optimizer_state_dict" in loaded_dict:
+                self.alg.value_optimizer.load_state_dict(loaded_dict["value_optimizer_state_dict"])
         # -- load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]

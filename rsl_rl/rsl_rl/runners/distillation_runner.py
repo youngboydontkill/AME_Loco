@@ -121,7 +121,10 @@ class DistillationRunner(OnPolicyRunner):
                 start = stop
 
             # update policy
-            loss_dict = self.alg.update()
+            if isinstance(self.alg, DAgger):
+                loss_dict = self.alg.update(last_obs=obs)
+            else:
+                loss_dict = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start

@@ -44,11 +44,13 @@ class KuavoS54DepthCNNMLPPolicyCfg:
     class_name: str = "StudentTeacherCNNMLP"
     student_depth_group: str = "depth"
     student_props_group: str = "props"
+    critic_group: str = "teacher_critic"
     teacher_map_scan_dim: tuple[int, int, int] = (33, 21, 3)
     depth_feature_dim: int = 128
     props_hidden_dims: list[int] = [512, 256]
     props_feature_dim: int = 128
     actor_hidden_dims: list[int] = [512, 256, 128]
+    critic_hidden_dims: list[int] = [512, 256, 128]
     velocity_hidden_dims: list[int] = [128]
     activation: str = "elu"
     init_noise_std: float = 0.1
@@ -57,6 +59,10 @@ class KuavoS54DepthCNNMLPPolicyCfg:
 @configclass
 class KuavoS54DepthCNNMLPAlgorithmCfg(KuavoS54DistillationAlgorithmCfg):
     velocity_loss_coef: float = 0.1
+    gamma: float = 0.99
+    lam: float = 0.95
+    value_learning_rate: float = 1.0e-3
+    value_num_learning_epochs: int = 1
 
 
 @configclass
