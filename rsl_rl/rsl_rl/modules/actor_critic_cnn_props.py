@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.distributions import Normal
 
 from rsl_rl.networks import MLP
+from rsl_rl.modules.actor_critic_encoder import ActorCriticEncoder
 
 
 class ActorCriticCNNProps(nn.Module):
@@ -20,6 +21,8 @@ class ActorCriticCNNProps(nn.Module):
         student_depth_group="depth",
         student_props_group="props",
         critic_group="teacher_critic",
+        teacher_group="teacher",
+        teacher_map_scan_dim=(33, 21, 3),
         depth_feature_dim=128,
         props_hidden_dims=(512, 256),
         props_feature_dim=128,
@@ -39,6 +42,7 @@ class ActorCriticCNNProps(nn.Module):
         self.student_depth_group = student_depth_group
         self.student_props_group = student_props_group
         self.critic_group = critic_group
+        self.teacher_group = teacher_group
         if actor_obs_normalization or critic_obs_normalization:
             raise ValueError("ActorCriticCNNProps uses the DAgger student inputs without observation normalization")
 
@@ -75,6 +79,23 @@ class ActorCriticCNNProps(nn.Module):
             raise ValueError(f"Unsupported noise_std_type: {noise_std_type}; expected 'scalar'")
         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
         self.distribution = None
+        self.teacher = ActorCriticEncoder(
+            obs,
+            {"policy": [teacher_group], "critic": [critic_group]},
+            num_actions,
+            actor_obs_normalization=False,
+            critic_obs_normalization=False,
+            actor_hidden_dims=[512, 256, 128],
+            critic_hidden_dims=[512, 256, 128],
+            activation="elu",
+            init_noise_std=1.0,
+            map_scan_dim=teacher_map_scan_dim,
+            cnn_downsample=True,
+        )
+        for parameter in self.teacher.parameters():
+            parameter.requires_grad_(False)
+        self.teacher.eval()
+        self.loaded_teacher = False
         Normal.set_default_validate_args(False)
 
     def _encode_actor(self, obs):
@@ -125,6 +146,19 @@ class ActorCriticCNNProps(nn.Module):
     def update_normalization(self, obs):
         pass
 
+    def train(self, mode=True):
+        super().train(mode)
+        self.teacher.eval()
+        return self
+
+    def compute_bc_loss(self, obs):
+        if not self.loaded_teacher:
+            raise RuntimeError("BC loss is enabled, but no teacher weights were loaded from a checkpoint")
+        student_actions = self.act_inference(obs)
+        with torch.no_grad():
+            teacher_actions, _ = self.teacher.act_inference({self.teacher_group: obs[self.teacher_group]})
+        return torch.nn.functional.mse_loss(student_actions, teacher_actions)
+
     def load_student_checkpoint(self, path, map_location="cpu"):
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
@@ -144,5 +178,26 @@ class ActorCriticCNNProps(nn.Module):
             raise ValueError(
                 f"Checkpoint does not contain compatible student weights for {missing}: {path}"
             )
+        teacher_state = {
+            key: value
+            for key, value in state_dict.items()
+            if key.startswith("teacher.") and key in current_state and current_state[key].shape == value.shape
+        }
+        required_teacher_keys = {key for key in current_state if key.startswith("teacher.")}
+        missing_teacher_keys = required_teacher_keys - teacher_state.keys()
+        if missing_teacher_keys:
+            preview = sorted(missing_teacher_keys)[:5]
+            raise ValueError(f"Checkpoint is missing compatible teacher weights {preview}: {path}")
+        student_state.update(teacher_state)
         self.load_state_dict(student_state, strict=False)
+        self.loaded_teacher = True
+        self.teacher.eval()
         return sorted(student_state)
+
+    def load_state_dict(self, state_dict, strict=True):
+        if "model_state_dict" in state_dict:
+            state_dict = state_dict["model_state_dict"]
+        result = super().load_state_dict(state_dict, strict=strict)
+        self.loaded_teacher = any(key.startswith("teacher.") for key in state_dict)
+        self.teacher.eval()
+        return result

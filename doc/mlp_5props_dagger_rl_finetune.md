@@ -96,3 +96,36 @@ PPO 微调结果默认保存在 `logs/rsl_rl/kuavo_s54_depth_student_ppo_finetun
 - PPO 微调网络与算法参数：`source/ame_locomotion/ame_locomotion/tasks/manager_based/ame_locomotion/agents/kuavo_s54_depth_rl_finetune_cfg.py`
 - DAgger 环境与微调专用环境：`source/ame_locomotion/ame_locomotion/tasks/manager_based/ame_locomotion/s54/velocity_env_cfg_s54_depth_enhance.py`
 - student/critic、GAE 与 checkpoint 迁移实现：`rsl_rl/rsl_rl/modules/student_teacher_cnn_mlp.py`、`rsl_rl/rsl_rl/algorithms/dagger.py`、`rsl_rl/rsl_rl/modules/actor_critic_cnn_props.py`
+
+
+- physics_material
+  - static_friction_range、dynamic_friction_range：刚体表面静摩擦和动摩擦系数的采样范围。摩擦较低时更容易打滑；摩擦变化范围增大时，策略需要适应更多地面接触条件。
+  - restitution_range：恢复系数，控制碰撞弹性。范围增大可能让碰撞后的弹跳更明显。
+  - num_buckets：离散的材料参数组合数。增加它会提供更多不同的摩擦/弹性组合；设为 1 时当前基本没有组合多样性。
+  - asset_cfg：指定随机化应用到哪些刚体。现在指向机器人所有刚体 .*。
+- add_base_mass
+  - mass_distribution_params：对 waist_yaw_link 的质量增加量范围，单位是 kg。
+  - operation="add"：在原质量上加减采样值，而不是用采样值替换原质量。增加范围有助于适应载荷变化，但范围过大可能导致惯性和控制响应明显改变。
+- base_com
+  - com_range.x/y/z：基座质心在各轴方向的偏移范围，单位是 m，作用于 waist_yaw_link。
+  - 偏移会改变机器人受力和转动惯量的平衡，增加后能提升对载荷偏置的适应性；过大会让站立和行走更难。
+- base_external_force_torque
+  - force_range：reset 事件施加的力范围，单位 N。
+  - torque_range：施加的力矩范围，单位 N·m。
+  - 非零扰动可训练抗推能力；过大可能造成频繁摔倒。注意它的 mode="reset"，扰动发生在 reset 时，不是定时持续推搡。
+- reset_base
+  - pose_range.x/y：reset 时基座位置相对初始位置的偏移，单位 m。
+  - pose_range.yaw：初始航向角偏移，单位 rad。
+  - velocity_range.x/y/z：初始线速度范围，单位 m/s。
+  - velocity_range.roll/pitch/yaw：初始角速度范围，单位 rad/s。
+  - 增大这些范围会让策略从更多初始姿态和运动状态开始训练，增强恢复能力，但也会提高早期训练难度。
+- reset_robot_joints
+  - position_range：关节默认姿态的缩放因子范围；(1, 1) 表示不改变默认关节姿态。更宽的范围会让 reset 姿态偏离默认站姿。
+  - velocity_range：关节初始速度范围，单位 rad/s。非零范围可让策略适应不同关节运动状态，但过大会导致 reset 后不稳定。
+- push_robot
+  - interval_range_s：两次 push 之间的时间范围，单位秒。
+  - velocity_range.x/y：push 事件设置的水平速度范围，单位 m/s；它表示速度扰动，不是力的单位。增大后能训练抗扰动能力，但推力过强会增加摔倒和终止。
+  - 当前范围为零，所以即使事件按间隔触发，也不会产生实际推搡。
+- randomize_depth_camera
+  - position_range.x/y/z：相机相对安装刚体局部位置的偏移范围，单位 m。
+  - 非零偏移会改变相机视角和深度图内容，有利于适应安装误差；范围过大可能让训练图像与部署相机差异过大。

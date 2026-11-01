@@ -49,6 +49,7 @@ class PPO:
         # Adversarial motion prior
         amp_cfg: dict | None = None,
         velocity_loss_coef: float = 0.0,
+        bc_loss_coef: float = 0.0,
     ):
         # device-related parameters
         self.device = device
@@ -122,6 +123,9 @@ class PPO:
         self.amp = AMPReward(amp_cfg, self.device, multi_gpu_cfg) if amp_cfg is not None else None
         self.mean_amp_reward = 0.0
         self.velocity_loss_coef = velocity_loss_coef
+        self.bc_loss_coef = bc_loss_coef
+        if self.bc_loss_coef > 0 and not hasattr(self.policy, "compute_bc_loss"):
+            raise ValueError("BC loss is enabled, but the policy does not implement compute_bc_loss().")
 
     def init_storage(self, training_type, num_envs, num_transitions_per_env, obs, actions_shape):
         # create rollout storage
@@ -217,6 +221,7 @@ class PPO:
         else:
             mean_symmetry_loss = None
         mean_velocity_loss = 0.0 if self.velocity_loss_coef > 0 else None
+        mean_bc_loss = 0.0 if self.bc_loss_coef > 0 else None
 
         # generator for mini batches
         if self.policy.is_recurrent:
@@ -349,6 +354,11 @@ class PPO:
                     loss += self.velocity_loss_coef * velocity_loss
                     mean_velocity_loss += velocity_loss.item()
 
+            if self.bc_loss_coef > 0:
+                bc_loss = self.policy.compute_bc_loss(obs_batch)
+                loss += self.bc_loss_coef * bc_loss
+                mean_bc_loss += bc_loss.item()
+
             # Symmetry loss
             if self.symmetry:
                 # obtain the symmetric actions
@@ -462,6 +472,8 @@ class PPO:
             loss_dict["symmetry"] = mean_symmetry_loss
         if mean_velocity_loss is not None:
             loss_dict["velocity"] = mean_velocity_loss / num_updates
+        if mean_bc_loss is not None:
+            loss_dict["behavior_cloning"] = mean_bc_loss / num_updates
 
         if self.amp is not None:
             loss_dict.update(self.amp.update())
