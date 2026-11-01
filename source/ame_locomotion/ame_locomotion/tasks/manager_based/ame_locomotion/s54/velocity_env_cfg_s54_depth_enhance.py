@@ -38,6 +38,99 @@ class DepthEnhanceEventCfg(s54_cfg._g1_cfg.EventCfg):
         },
     )
 
+@configclass
+class CNNMLPDepthDistillEventCfg:
+    """Task-local randomization terms; set the ranges here for CNN/props training."""
+
+   
+    randomize_depth_camera = EventTerm(
+        func=mdp.randomize_camera_position,
+        mode="reset",
+        params={
+            "sensor_cfg": SceneEntityCfg("depth_camera"),
+            "position_range": {"x": (0.0, 0.001), "y": (-0.01, 0.01), "z": (-0.001, 0.001)},
+        },
+    )
+
+
+
+
+@configclass
+class CNNMLPDepthRLEventCfg:
+    """Task-local randomization terms; set the ranges here for CNN/props training."""
+
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.3, 1.0),
+            "dynamic_friction_range": (0.3, 1.0),
+            "restitution_range": (0.0, 0.1),
+            "num_buckets": 64,
+        },
+    )
+    add_base_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="waist_yaw_link"),
+            "mass_distribution_params": (-1.0, 2.0),
+            "operation": "add",
+        },
+    )
+    base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="waist_yaw_link"),
+            "com_range": {"x": (-0.003, 0.003), "y": (-0.003, 0.003), "z": (-0.001, 0.001)},
+        },
+    )
+    base_external_force_torque = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="waist_yaw_link"),
+            "force_range": (0.0, 0.0),
+            "torque_range": (0.0, 0.0),
+        },
+    )
+    # reset_base = EventTerm(
+    #     func=mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+    #         "velocity_range": {
+    #             "x": (0.0, 0.0),
+    #             "y": (0.0, 0.0),
+    #             "z": (0.0, 0.0),
+    #             "roll": (0.0, 0.0),
+    #             "pitch": (0.0, 0.0),
+    #             "yaw": (0.0, 0.0),
+    #         },
+    #     },
+    # )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
+    )
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(5.0, 10.0),
+        params={"velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0)}},
+    )
+    randomize_depth_camera = EventTerm(
+        func=mdp.randomize_camera_position,
+        mode="reset",
+        params={
+            "sensor_cfg": SceneEntityCfg("depth_camera"),
+            "position_range": {"x": (0.0, 0.001), "y": (-0.01, 0.01), "z": (-0.001, 0.001)},
+        },
+    )
+
 
 @configclass
 class EnhancedDepthObservationsCfg(DepthObservationsCfg):
@@ -344,9 +437,12 @@ class CNNMLPDepthObservationsCfg(DepthDistillationObservationsCfg):
 @configclass
 class KuavoS54DepthCNNMLPDistillEnvCfg(KuavoS54DepthDistillEnvCfg):
     observations: CNNMLPDepthObservationsCfg = CNNMLPDepthObservationsCfg()
+    events: CNNMLPDepthDistillEventCfg = CNNMLPDepthDistillEventCfg()
+
     def __post_init__(self):
         self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
         super().__post_init__()
+        self.events = copy.deepcopy(CNNMLPDepthDistillEventCfg())
         ranges = self.commands.base_velocity.ranges
         ranges.lin_vel_x = (0.0, 1.0)
         ranges.lin_vel_y = (0.0, 0.0)
@@ -368,6 +464,15 @@ class KuavoS54DepthCNNMLPDistillEnvCfg_PLAY(KuavoS54DepthDistillEnvCfg_PLAY):
 @configclass
 class KuavoS54DepthCNNMLPRLEnvCfg(KuavoS54DepthCNNMLPDistillEnvCfg):
     """RL fine-tuning environment with rewards isolated from the DAgger task config."""
+    events: CNNMLPDepthRLEventCfg = CNNMLPDepthRLEventCfg()
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
+        super().__post_init__()
+        self.events = copy.deepcopy(CNNMLPDepthRLEventCfg())
+        ranges = self.commands.base_velocity.ranges
+        ranges.lin_vel_x = (0.0, 1.0)
+        ranges.lin_vel_y = (0.0, 0.0)
+        ranges.ang_vel_z = (-0.0, 0.0)
 
 
 @configclass
