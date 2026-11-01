@@ -20,6 +20,7 @@ from rsl_rl.modules import (
     ActorCriticRecurrent,
     ActorCriticEncoder,
     ActorCriticCNNMLP,
+    ActorCriticCNNProps,
     ActorCriticGRU,
     resolve_rnd_config,
     resolve_symmetry_config,

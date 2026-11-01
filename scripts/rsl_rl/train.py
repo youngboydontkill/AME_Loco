@@ -34,6 +34,12 @@ parser.add_argument(
     help="Teacher checkpoint path for distillation; overrides load_run/load_checkpoint.",
 )
 parser.add_argument(
+    "--student_checkpoint",
+    type=str,
+    default=None,
+    help="DAgger student checkpoint to initialize PPO fine-tuning; starts a fresh PPO optimizer.",
+)
+parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
@@ -176,7 +182,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # save resume path before creating a new log_dir
-    if agent_cfg.resume or agent_cfg.algorithm.class_name in {"Distillation", "DAgger"}:
+    if args_cli.student_checkpoint:
+        resume_path = os.path.abspath(args_cli.student_checkpoint)
+        if not os.path.isfile(resume_path):
+            raise FileNotFoundError(f"Student checkpoint not found: {resume_path}")
+    elif agent_cfg.resume or agent_cfg.algorithm.class_name in {"Distillation", "DAgger"}:
         if args_cli.teacher_checkpoint:
             resume_path = os.path.abspath(args_cli.teacher_checkpoint)
             if not os.path.isfile(resume_path):
@@ -209,7 +219,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
-    if agent_cfg.resume or agent_cfg.algorithm.class_name in {"Distillation", "DAgger"}:
+    if args_cli.student_checkpoint:
+        if not isinstance(runner, OnPolicyRunner) or not hasattr(runner.alg.policy, "load_student_checkpoint"):
+            raise ValueError("--student_checkpoint is only supported by the CNN/props PPO fine-tuning task")
+        print(f"[INFO]: Initializing PPO student from checkpoint: {resume_path}")
+        loaded_keys = runner.alg.policy.load_student_checkpoint(resume_path, map_location=agent_cfg.device)
+        print(f"[INFO]: Loaded {len(loaded_keys)} compatible student parameter tensors")
+    elif agent_cfg.resume or agent_cfg.algorithm.class_name in {"Distillation", "DAgger"}:
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)

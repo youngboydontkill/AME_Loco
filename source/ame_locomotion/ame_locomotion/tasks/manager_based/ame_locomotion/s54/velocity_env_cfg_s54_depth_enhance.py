@@ -178,11 +178,20 @@ class KuavoS54DepthEnhanceGRUAMPEnvCfg(KuavoS54DepthEnhanceAMPEnvCfg):
     def __post_init__(self):
         self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
         super().__post_init__()
+        ranges = self.commands.base_velocity.ranges
+        ranges.lin_vel_x = (0.0, 1.0)
+        ranges.lin_vel_y = (0.0, 0.0)
+        ranges.ang_vel_z = (-0.5, 0.5)
 
 
 @configclass
 class KuavoS54DepthGRURawAMPEnvCfg(KuavoS54DepthEnhanceGRUAMPEnvCfg):
     """GRU AMP training on raw depth without Student enhancement."""
+    def __post_init__(self):
+        super().__post_init__()
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
 
     observations: GRURawDepthAMPObservationsCfg = GRURawDepthAMPObservationsCfg()
 
@@ -296,3 +305,71 @@ class KuavoS54DepthRawDistillEnvCfg_PLAY(KuavoS54DepthRoughEnvCfg_PLAY):
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+
+
+@configclass
+class CNNMLPDepthObservationsCfg(DepthDistillationObservationsCfg):
+    """Mixed enhanced/raw depth plus a five-frame proprioceptive history."""
+
+    @configclass
+    class DepthCfg(ObsGroup):
+        depth_image = ObsTerm(
+            func=mdp.mixed_student_depth_image,
+            params={
+                "sensor_cfg": SceneEntityCfg("depth_camera"),
+                "checkpoint_path": EDGE_STUDENT_CHECKPOINT,
+                "enhance_probability": 0.7,
+                "noise_std": 0.02,
+                "dropout_probability": 0.02,
+            },
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class PropsCfg(s54_cfg._g1_cfg.ObservationsCfg.PolicyCfg):
+        height_scan = None
+
+        def __post_init__(self):
+            super().__post_init__()
+            self.history_length = 5
+            self.flatten_history_dim = False
+
+    depth: DepthCfg = DepthCfg()
+    props: PropsCfg = PropsCfg()
+
+
+@configclass
+class KuavoS54DepthCNNMLPDistillEnvCfg(KuavoS54DepthDistillEnvCfg):
+    observations: CNNMLPDepthObservationsCfg = CNNMLPDepthObservationsCfg()
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
+        super().__post_init__()
+        ranges = self.commands.base_velocity.ranges
+        ranges.lin_vel_x = (0.0, 1.0)
+        ranges.lin_vel_y = (0.0, 0.0)
+        ranges.ang_vel_z = (-0.0, 0.0)
+
+
+@configclass
+class KuavoS54DepthCNNMLPDistillEnvCfg_PLAY(KuavoS54DepthDistillEnvCfg_PLAY):
+    observations: CNNMLPDepthObservationsCfg = CNNMLPDepthObservationsCfg()
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
+        super().__post_init__()
+        ranges = self.commands.base_velocity.ranges
+        ranges.lin_vel_x = (0.0, 1.0)
+        ranges.lin_vel_y = (0.0, 0.0)
+        ranges.ang_vel_z = (-0.0, 0.0)
+
+
+@configclass
+class KuavoS54DepthCNNMLPRLEnvCfg(KuavoS54DepthCNNMLPDistillEnvCfg):
+    """RL fine-tuning environment with rewards isolated from the DAgger task config."""
+
+
+@configclass
+class KuavoS54DepthCNNMLPRLEnvCfg_PLAY(KuavoS54DepthCNNMLPDistillEnvCfg_PLAY):
+    """Playback environment paired with the PPO fine-tuning task."""

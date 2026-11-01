@@ -1,7 +1,7 @@
 """Kuavo S54 adaptation of the AME G1 rough-terrain task."""
 
 import importlib
-
+import math
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -109,5 +109,11 @@ class KuavoS54RoughEnvCfg_PLAY(_g1_cfg.G1RoughEnvCfg_PLAY):
 
     def __post_init__(self):
         super().__post_init__()
+        self.commands.base_velocity.ranges.lin_vel_x = (0.8, 0.8)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.events.reset_base.params["pose_range"]["yaw"] = (-math.pi / 2, math.pi / 2)
         _apply_s54_name_mapping(self)
+        
         self.sim.physx.gpu_collision_stack_size = 2**28

@@ -37,3 +37,34 @@ class KuavoS54DepthDistillRunnerCfg(RslRlBaseRunnerCfg):
     obs_groups: dict[str, list[str]] = {"policy": ["policy"], "teacher": ["teacher"]}
     policy: KuavoS54DepthDistillPolicyCfg = KuavoS54DepthDistillPolicyCfg()
     algorithm: KuavoS54DistillationAlgorithmCfg = KuavoS54DistillationAlgorithmCfg()
+
+
+@configclass
+class KuavoS54DepthCNNMLPPolicyCfg:
+    class_name: str = "StudentTeacherCNNMLP"
+    student_depth_group: str = "depth"
+    student_props_group: str = "props"
+    teacher_map_scan_dim: tuple[int, int, int] = (33, 21, 3)
+    depth_feature_dim: int = 128
+    props_hidden_dims: list[int] = [512, 256]
+    props_feature_dim: int = 128
+    actor_hidden_dims: list[int] = [512, 256, 128]
+    velocity_hidden_dims: list[int] = [128]
+    activation: str = "elu"
+    init_noise_std: float = 0.1
+
+
+@configclass
+class KuavoS54DepthCNNMLPAlgorithmCfg(KuavoS54DistillationAlgorithmCfg):
+    velocity_loss_coef: float = 0.1
+
+
+@configclass
+class KuavoS54DepthCNNMLPRunnerCfg(KuavoS54DepthDistillRunnerCfg):
+    experiment_name: str = "kuavo_s54_depth_enhance_dagger_cnn_5props"
+    obs_groups: dict[str, list[str]] = {
+        "policy": ["depth", "props"],
+        "teacher": ["teacher"],
+    }
+    policy: KuavoS54DepthCNNMLPPolicyCfg = KuavoS54DepthCNNMLPPolicyCfg()
+    algorithm: KuavoS54DepthCNNMLPAlgorithmCfg = KuavoS54DepthCNNMLPAlgorithmCfg()

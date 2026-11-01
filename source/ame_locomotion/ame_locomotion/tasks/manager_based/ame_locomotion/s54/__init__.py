@@ -193,6 +193,62 @@ gym.register(
 )
 
 gym.register(
+    id="MLP-5props-Kuavo-Depth-Enhance-DAgger-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthCNNMLPDistillEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_distill_cfg:KuavoS54DepthCNNMLPRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="MLP-5props-Kuavo-Depth-Enhance-DAgger-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthCNNMLPDistillEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_distill_cfg:KuavoS54DepthCNNMLPRunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="MLP-5props-Kuavo-Depth-Enhance-RL-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthCNNMLPRLEnvCfg"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_rl_finetune_cfg:KuavoS54DepthStudentPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
+    id="MLP-5props-Kuavo-Depth-Enhance-RL-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.velocity_env_cfg_s54_depth_enhance:KuavoS54DepthCNNMLPRLEnvCfg_PLAY"
+        ),
+        "rsl_rl_cfg_entry_point": (
+            f"{agents.__name__}.kuavo_s54_depth_rl_finetune_cfg:KuavoS54DepthStudentPPORunnerCfg"
+        ),
+    },
+)
+
+gym.register(
     id="AME-Kuavo-S54-Depth-DAgger-Raw-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
