@@ -1,8 +1,11 @@
 """Export the S54 CNN/props student actor without launching Isaac Sim.
 
-The inputs are the flattened 42x42 depth observation and the five-frame
-proprioceptive observation produced by the MLP-5props task. Depth enhancement,
-history management, and action scaling remain the caller's responsibility.
+Inputs match the S54 deployment interface with batch size 1: ``obs`` [1, 450]
+contains five chronological 90-value proprioception frames, and ``actor_depth``
+[1, 1, 42, 42] contains the current processed depth image. The caller owns depth
+preprocessing, history management, and action scaling. Proprioception is
+supplied in deployment joint order; the exported model converts it to Isaac
+training order and returns actions in deployment order.
 
 Example:
 python scripts/rsl_rl/export_s54_depth_student_onnx.py \
@@ -26,18 +29,80 @@ from rsl_rl.networks import MLP
 
 
 DEPTH_SIZE = 42
-DEPTH_DIM = DEPTH_SIZE * DEPTH_SIZE
 PROPS_HISTORY_LENGTH = 5
 DEPTH_FEATURE_DIM = 128
 PROPS_FEATURE_DIM = 128
 ACTION_DIM = 27
+PROPRIO_DIM = 90
+DEPLOYMENT_JOINT_NAMES = (
+    "leg_l1_joint",
+    "leg_l2_joint",
+    "leg_l3_joint",
+    "leg_l4_joint",
+    "leg_l5_joint",
+    "leg_l6_joint",
+    "leg_r1_joint",
+    "leg_r2_joint",
+    "leg_r3_joint",
+    "leg_r4_joint",
+    "leg_r5_joint",
+    "leg_r6_joint",
+    "waist_yaw_joint",
+    "zarm_l1_joint",
+    "zarm_l2_joint",
+    "zarm_l3_joint",
+    "zarm_l4_joint",
+    "zarm_l5_joint",
+    "zarm_l6_joint",
+    "zarm_l7_joint",
+    "zarm_r1_joint",
+    "zarm_r2_joint",
+    "zarm_r3_joint",
+    "zarm_r4_joint",
+    "zarm_r5_joint",
+    "zarm_r6_joint",
+    "zarm_r7_joint",
+)
+ISAAC_JOINT_NAMES = (
+    "leg_l1_joint",
+    "leg_r1_joint",
+    "waist_yaw_joint",
+    "leg_l2_joint",
+    "leg_r2_joint",
+    "zarm_l1_joint",
+    "zarm_r1_joint",
+    "leg_l3_joint",
+    "leg_r3_joint",
+    "zarm_l2_joint",
+    "zarm_r2_joint",
+    "leg_l4_joint",
+    "leg_r4_joint",
+    "zarm_l3_joint",
+    "zarm_r3_joint",
+    "leg_l5_joint",
+    "leg_r5_joint",
+    "zarm_l4_joint",
+    "zarm_r4_joint",
+    "leg_l6_joint",
+    "leg_r6_joint",
+    "zarm_l5_joint",
+    "zarm_r5_joint",
+    "zarm_l6_joint",
+    "zarm_r6_joint",
+    "zarm_l7_joint",
+    "zarm_r7_joint",
+)
+ISAAC_TO_DEPLOYMENT = tuple(DEPLOYMENT_JOINT_NAMES.index(name) for name in ISAAC_JOINT_NAMES)
+DEPLOYMENT_TO_ISAAC = tuple(ISAAC_JOINT_NAMES.index(name) for name in DEPLOYMENT_JOINT_NAMES)
 
 
 class S54DepthStudentOnnx(nn.Module):
-    """Student actor path, exposing depth and proprioception as separate inputs."""
+    """Student actor adapted to the S54 deployment input and joint order."""
 
     def __init__(self, state_dict: dict[str, torch.Tensor], props_dim: int):
         super().__init__()
+        if props_dim != PROPRIO_DIM:
+            raise ValueError(f"S54 props must contain {PROPRIO_DIM} values per frame, got {props_dim}.")
         self.depth_encoder = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=5, stride=2, padding=2),
             nn.ELU(),
@@ -56,13 +121,21 @@ class S54DepthStudentOnnx(nn.Module):
         self.depth_encoder.load_state_dict(_submodule_state(state_dict, "depth_encoder."), strict=True)
         self.props_encoder.load_state_dict(_submodule_state(state_dict, "props_encoder."), strict=True)
         self.actor.load_state_dict(_submodule_state(state_dict, "actor."), strict=True)
+        self.register_buffer("isaac_to_deployment", torch.tensor(ISAAC_TO_DEPLOYMENT, dtype=torch.long))
+        self.register_buffer("deployment_to_isaac", torch.tensor(DEPLOYMENT_TO_ISAAC, dtype=torch.long))
         self.eval()
 
-    def forward(self, depth: torch.Tensor, props: torch.Tensor) -> torch.Tensor:
-        batch_size = depth.shape[0]
-        depth_features = self.depth_encoder(depth.reshape(batch_size, 1, DEPTH_SIZE, DEPTH_SIZE))
-        props_features = self.props_encoder(props.reshape(batch_size, -1))
-        return self.actor(torch.cat((depth_features, props_features), dim=-1))
+    def forward(self, obs: torch.Tensor, actor_depth: torch.Tensor) -> torch.Tensor:
+        batch_size = obs.shape[0]
+        depth_features = self.depth_encoder(actor_depth.reshape(batch_size, 1, DEPTH_SIZE, DEPTH_SIZE))
+        props = obs.reshape(batch_size, PROPS_HISTORY_LENGTH, PROPRIO_DIM)
+        joint_pos = props[..., 9:36].index_select(-1, self.isaac_to_deployment)
+        joint_vel = props[..., 36:63].index_select(-1, self.isaac_to_deployment)
+        last_action = props[..., 63:90].index_select(-1, self.isaac_to_deployment)
+        training_props = torch.cat((props[..., :9], joint_pos, joint_vel, last_action), dim=-1)
+        props_features = self.props_encoder(training_props.reshape(batch_size, -1))
+        action_isaac = self.actor(torch.cat((depth_features, props_features), dim=-1))
+        return action_isaac.index_select(1, self.deployment_to_isaac)
 
 
 def _submodule_state(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
@@ -76,7 +149,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True, help="DAgger or PPO student checkpoint")
     parser.add_argument("--output", default=None, help="ONNX path; defaults to <checkpoint-dir>/exported/policy.onnx")
-    parser.add_argument("--props-dim", type=int, default=None, help="Values per proprioception frame; inferred by default")
     parser.add_argument("--opset", type=int, default=17)
     args = parser.parse_args()
 
@@ -93,35 +165,33 @@ def main() -> None:
     if first_weight is None:
         raise ValueError("Cannot infer proprioception width from props_encoder.0.weight")
     inferred_props_dim = first_weight.shape[1] // PROPS_HISTORY_LENGTH
-    props_dim = args.props_dim or inferred_props_dim
-    if props_dim != inferred_props_dim:
-        raise ValueError(f"Checkpoint expects props_dim={inferred_props_dim}, got {props_dim}")
+    if inferred_props_dim != PROPRIO_DIM:
+        raise ValueError(f"Checkpoint expects props_dim={inferred_props_dim}; S54 deployment requires {PROPRIO_DIM}")
 
-    policy = S54DepthStudentOnnx(state_dict, props_dim)
+    policy = S54DepthStudentOnnx(state_dict, inferred_props_dim)
     output_path = args.output or os.path.join(os.path.dirname(checkpoint), "exported", "policy.onnx")
     output_path = os.path.abspath(output_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    example_depth = torch.zeros(1, DEPTH_DIM, dtype=torch.float32)
-    example_props = torch.zeros(1, PROPS_HISTORY_LENGTH, props_dim, dtype=torch.float32)
+    example_obs = torch.zeros(1, PROPS_HISTORY_LENGTH * PROPRIO_DIM, dtype=torch.float32)
+    example_depth = torch.zeros(1, 1, DEPTH_SIZE, DEPTH_SIZE, dtype=torch.float32)
     torch.onnx.export(
         policy,
-        (example_depth, example_props),
+        (example_obs, example_depth),
         output_path,
         export_params=True,
         opset_version=args.opset,
-        input_names=["depth", "props"],
+        input_names=["obs", "actor_depth"],
         output_names=["action"],
-        dynamic_axes={
-            "depth": {0: "batch"},
-            "props": {0: "batch"},
-            "action": {0: "batch"},
-        },
     )
 
     print(f"Exported: {output_path}")
-    print(f"Inputs: depth [batch, {DEPTH_DIM}], props [batch, {PROPS_HISTORY_LENGTH}, {props_dim}]")
-    print(f"Output: action [batch, {ACTION_DIM}], raw policy action in Isaac joint order")
+    print(
+        f"Inputs: obs [1, {PROPS_HISTORY_LENGTH * PROPRIO_DIM}], "
+        f"actor_depth [1, 1, {DEPTH_SIZE}, {DEPTH_SIZE}]"
+    )
+    print(f"Output: action [1, {ACTION_DIM}], raw policy action in deployment joint order")
+    print("Deployment joint order: " + ", ".join(DEPLOYMENT_JOINT_NAMES))
     print("Depth must use the task's mixed_student_depth_image preprocessing.")
 
 

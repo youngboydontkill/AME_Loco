@@ -23,7 +23,7 @@ GRU_DEPTH_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.25,
+            proportion=0.35,
             step_height_range=(0.05, 0.15),
             step_width=0.35,
             platform_width=3.0,
@@ -37,7 +37,7 @@ GRU_DEPTH_TERRAINS_CFG = TerrainGeneratorCfg(
             platform_width=2.0,
         ),
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.35,
+            proportion=0.25,
             noise_range=(0.01, 0.06),
             noise_step=0.01,
             downsampled_scale=0.1,
