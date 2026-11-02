@@ -20,9 +20,9 @@ from kuavo.assets.roban_s17 import ROBAN_S17_CFG
 
 
 # The S17 URDF already pitches ``camera_base`` down by 0.27152 rad.  Apply the
-# remaining fixed pitch so the optical axis is about 50 degrees below level.
+# remaining fixed pitch so the optical axis is about 40 degrees below level.
 _ROBAN_CAMERA_BASE_PITCH = 0.27152
-_ROBAN_CAMERA_PITCH = math.radians(50.0) - _ROBAN_CAMERA_BASE_PITCH
+_ROBAN_CAMERA_PITCH = math.radians(40.0) - _ROBAN_CAMERA_BASE_PITCH
 _ROBAN_CAMERA_PITCH_QUAT = (
     math.cos(_ROBAN_CAMERA_PITCH / 2.0),
     0.0,
@@ -60,7 +60,7 @@ class RobanDepthSceneCfg(KuavoS54DepthSceneCfg):
             horizontal_aperture=20.955,
             clipping_range=(0.05, 5.0),
         ),
-        # The optical axis is fixed at approximately 50 degrees below level.
+        # The optical axis is fixed at approximately 40 degrees below level.
         offset=TiledCameraCfg.OffsetCfg(
             pos=(0.0, 0.0, 0.0),
             rot=_ROBAN_CAMERA_ROT,
