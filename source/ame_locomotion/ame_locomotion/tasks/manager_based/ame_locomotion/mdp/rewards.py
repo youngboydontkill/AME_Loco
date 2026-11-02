@@ -75,6 +75,27 @@ def joint_position_penalty(
     return torch.where(torch.logical_or(cmd > 0.0, body_vel > velocity_threshold), reward, stand_still_scale * reward)
 
 
+def lateral_velocity_error_l2(
+    env: ManagerBasedRLEnv, command_name: str = "base_velocity", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Penalize lateral base-velocity error in the robot frame."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    return torch.square(asset.data.root_lin_vel_b[:, 1] - command[:, 1])
+
+
+def knee_backward_swing_l2(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    angle_threshold: float,
+) -> torch.Tensor:
+    """Penalize only excessive positive knee flexion beyond a soft threshold."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    knee_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    excess = torch.clamp(knee_pos - angle_threshold, min=0.0)
+    return torch.sum(torch.square(excess), dim=1)
+
+
 """
 Feet rewards.
 """

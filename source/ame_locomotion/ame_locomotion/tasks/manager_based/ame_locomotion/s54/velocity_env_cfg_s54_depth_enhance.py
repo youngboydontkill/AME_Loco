@@ -5,6 +5,7 @@ import math
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
@@ -256,12 +257,32 @@ class GRUEnhancedDepthObservationsCfg(EnhancedDepthObservationsCfg):
 
 
 @configclass
+class KuavoS54EnhanceRewardsCfg(s54_cfg._g1_cfg.RewardsCfg):
+    """Additional balance and knee-swing penalties for the S54 task."""
+
+    lateral_velocity_error = RewTerm(
+        func=mdp.lateral_velocity_error_l2,
+        weight=-0.5,
+        params={"command_name": "base_velocity", "asset_cfg": SceneEntityCfg("robot")},
+    )
+    knee_backward_swing = RewTerm(
+        func=mdp.knee_backward_swing_l2,
+        weight=-2.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["leg_[lr]4_joint"]),
+            "angle_threshold": 1.1,
+        },
+    )
+
+
+@configclass
 class KuavoS54EnhanceEnvCfg(KuavoS54DepthRoughEnvCfg):
     """Training configuration for mixed raw/Student depth inputs."""
 
     scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=2048, env_spacing=2.5)
     observations: MixedEnhancedDepthObservationsCfg = MixedEnhancedDepthObservationsCfg()
     events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
+    rewards: KuavoS54EnhanceRewardsCfg = KuavoS54EnhanceRewardsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -491,3 +512,12 @@ class KuavoS54DepthCNNMLPRLEnvCfg(KuavoS54DepthCNNMLPDistillEnvCfg):
 @configclass
 class KuavoS54DepthCNNMLPRLEnvCfg_PLAY(KuavoS54DepthCNNMLPDistillEnvCfg_PLAY):
     """Playback environment paired with the PPO fine-tuning task."""
+    def __post_init__(self):
+        self.scene.terrain.terrain_generator = copy.deepcopy(GRU_DEPTH_TERRAINS_CFG)
+        super().__post_init__()
+        self.events = copy.deepcopy(CNNMLPDepthRLEventCfg())
+        ranges = self.commands.base_velocity.ranges
+        ranges.lin_vel_x = (1.0, 1.0)
+        ranges.lin_vel_y = (0.0, 0.0)
+        ranges.ang_vel_z = (-0.0, 0.0)
+        self.events.reset_base.params["pose_range"]["yaw"] = (0.0, 0.0)
