@@ -260,6 +260,16 @@ class GRUEnhancedDepthObservationsCfg(EnhancedDepthObservationsCfg):
 class KuavoS54EnhanceRewardsCfg(s54_cfg._g1_cfg.RewardsCfg):
     """Additional balance and knee-swing penalties for the S54 task."""
 
+    feet_stumble = RewTerm(
+        func=mdp.feet_stumble,
+        weight=-2.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="leg_[lr]6_link"),
+            "horizontal_force_threshold": 20.0,
+            "force_scale": 100.0,
+            "swing_time_threshold": 0.02,
+        },
+    )
     lateral_velocity_error = RewTerm(
         func=mdp.lateral_velocity_error_l2,
         weight=-0.5,
@@ -281,7 +291,7 @@ class KuavoS54EnhanceEnvCfg(KuavoS54DepthRoughEnvCfg):
 
     scene: KuavoS54DepthSceneCfg = KuavoS54DepthSceneCfg(num_envs=2048, env_spacing=2.5)
     observations: MixedEnhancedDepthObservationsCfg = MixedEnhancedDepthObservationsCfg()
-    events: DepthEnhanceEventCfg = DepthEnhanceEventCfg()
+    events: CNNMLPDepthRLEventCfg = CNNMLPDepthRLEventCfg()
     rewards: KuavoS54EnhanceRewardsCfg = KuavoS54EnhanceRewardsCfg()
 
     def __post_init__(self):

@@ -101,14 +101,27 @@ Feet rewards.
 """
 
 
-def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
-    # extract the used quantities (to enable type-hinting)
+def feet_stumble(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    command_name: str = "base_velocity",
+    horizontal_force_threshold: float = 20.0,
+    force_scale: float = 100.0,
+    swing_time_threshold: float = 0.02,
+) -> torch.Tensor:
+    """Penalize strong horizontal foot impacts during forward swing-to-contact transitions."""
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     forces_z = torch.abs(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2])
     forces_xy = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
-    # Penalize feet hitting vertical surfaces
-    reward = torch.any(forces_xy > 4 * forces_z, dim=1).float()
-    return reward
+    # Horizontal impact force beyond the existing stumble ratio, with a dead zone for light contact.
+    excess_force = torch.relu(forces_xy - 4.0 * forces_z - horizontal_force_threshold)
+    just_landed = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    just_landed &= contact_sensor.data.last_air_time[:, sensor_cfg.body_ids] > swing_time_threshold
+    impact_penalty = torch.sum(torch.square(excess_force / force_scale) * just_landed, dim=1)
+
+    command = env.command_manager.get_command(command_name)
+    forward_motion = command[:, 0] > 0.1
+    return impact_penalty * forward_motion
 
 
 def feet_height_body(
