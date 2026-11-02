@@ -29,7 +29,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.1,
+            proportion=0.3,
             step_height_range=(0.05, 0.2),
             step_width=0.3,
             platform_width=3.0,
@@ -37,7 +37,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.1, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
         ),
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
             proportion=0.1, noise_range=(0.02, 0.10), noise_step=0.02, downsampled_scale=0.1, border_width=0.25
