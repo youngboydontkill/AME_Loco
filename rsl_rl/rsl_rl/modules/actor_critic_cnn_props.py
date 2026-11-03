@@ -155,7 +155,7 @@ class ActorCriticCNNProps(nn.Module):
         if not self.loaded_teacher:
             raise RuntimeError("BC loss is enabled, but no teacher weights were loaded from a checkpoint")
         student_actions = self.act_inference(obs)
-        with torch.no_grad():
+        with torch.no_grad(), torch.amp.autocast(device_type=student_actions.device.type, enabled=False):
             teacher_actions, _ = self.teacher.act_inference({self.teacher_group: obs[self.teacher_group]})
         return torch.nn.functional.mse_loss(student_actions, teacher_actions)
 

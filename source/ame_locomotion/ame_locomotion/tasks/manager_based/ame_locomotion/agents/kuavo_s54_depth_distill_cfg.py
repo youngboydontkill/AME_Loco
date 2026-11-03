@@ -19,6 +19,7 @@ class KuavoS54DepthDistillPolicyCfg:
 @configclass
 class KuavoS54DistillationAlgorithmCfg:
     class_name: str = "DAgger"
+    use_mixed_precision: bool = True
     num_learning_epochs: int = 1
     gradient_length: int = 1
     learning_rate: float = 1.0e-3

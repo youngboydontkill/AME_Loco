@@ -29,9 +29,15 @@ class Distillation:
         device="cpu",
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
+        use_mixed_precision: bool = False,
     ):
         # device-related parameters
         self.device = device
+        self.use_mixed_precision = use_mixed_precision
+        if use_mixed_precision and torch.device(device).type == "cuda":
+            with torch.cuda.device(device):
+                if not torch.cuda.is_bf16_supported(including_emulation=False):
+                    raise ValueError("BF16 requires a supported CUDA GPU; set use_mixed_precision=False.")
         self.is_multi_gpu = multi_gpu_cfg is not None
         # Multi-GPU parameters
         if multi_gpu_cfg is not None:
@@ -113,11 +119,17 @@ class Distillation:
             self.policy.detach_hidden_states()
             for obs, _, privileged_actions, dones in self.storage.generator():
 
-                # inference the student for gradient computation
-                actions = self.policy.act_inference(obs)
+                # Keep master parameters in FP32; autocast only forward and loss operations.
+                with torch.amp.autocast(
+                    device_type=torch.device(self.device).type,
+                    dtype=torch.bfloat16,
+                    enabled=self.use_mixed_precision,
+                ):
+                    # inference the student for gradient computation
+                    actions = self.policy.act_inference(obs)
 
-                # behavior cloning loss
-                behavior_loss = self.loss_fn(actions, privileged_actions)
+                    # behavior cloning loss
+                    behavior_loss = self.loss_fn(actions, privileged_actions)
 
                 # total loss
                 loss = loss + behavior_loss

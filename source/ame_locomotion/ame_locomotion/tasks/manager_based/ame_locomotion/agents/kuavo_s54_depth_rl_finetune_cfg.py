@@ -1,8 +1,9 @@
 """PPO fine-tuning configuration for the five-frame depth student."""
 
 from isaaclab.utils import configclass
-from isaaclab_rl.rsl_rl import RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import RslRlPpoActorCriticCfg
 
+from .ame_rsl_rl_ppo_cfg import AMEPpoAlgorithmCfg
 from .kuavo_s54_ame_rsl_rl_ppo_cfg import KuavoS54AMEPPORunnerCfg
 
 
@@ -26,7 +27,7 @@ class KuavoS54DepthStudentActorCriticCfg(RslRlPpoActorCriticCfg):
 
 
 @configclass
-class KuavoS54DepthStudentPPOAlgorithmCfg(RslRlPpoAlgorithmCfg):
+class KuavoS54DepthStudentPPOAlgorithmCfg(AMEPpoAlgorithmCfg):
     value_loss_coef: float = 1.0
     use_clipped_value_loss: bool = True
     clip_param: float = 0.2

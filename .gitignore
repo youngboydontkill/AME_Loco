@@ -67,6 +67,9 @@ datasets
 
 # Tests
 tests/
+!rsl_rl/tests/
+rsl_rl/tests/*
+!rsl_rl/tests/test_mixed_precision.py
 
 # Docker history
 .isaac-lab-docker-history

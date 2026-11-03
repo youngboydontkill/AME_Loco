@@ -6,6 +6,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 
@@ -23,9 +24,8 @@ from kuavo.assets.roban_s17 import ROBAN_S17_CFG
 
 
 # The all-zero S17 pose from the generic asset config leaves the feet below the
-# ground at a 0.8 m root height.  Use the standing pose shipped by LejuLab for
-# this locomotion task so the inherited base-contact termination does not reset
-# every environment on the first simulation step.
+# ground at a 0.8 m root height. Use the standing pose shipped by LejuLab for
+# this locomotion task so reset states start from a physically valid stance.
 _ROBAN_STANDING_INIT = ArticulationCfg.InitialStateCfg(
     pos=(0.0, 0.0, 0.77),
     rot=(1.0, 0.0, 0.0, 0.0),
@@ -140,7 +140,7 @@ def _apply_roban_name_mapping(cfg) -> None:
             if reward_name == "feet_slide":
                 reward.params["sensor_cfg"] = SceneEntityCfg("contact_forces", body_names=foot_body)
 
-    if hasattr(cfg.rewards, "joint_coordination"):
+    if getattr(cfg.rewards, "joint_coordination", None) is not None:
         cfg.rewards.joint_coordination.params["coord_joints"] = [
             ["leg_l3_joint", "zarm_r1_joint"],
             ["leg_r3_joint", "zarm_l1_joint"],
@@ -152,6 +152,10 @@ def _apply_roban_name_mapping(cfg) -> None:
     if hasattr(cfg.rewards, "joint_deviation_arms"):
         cfg.rewards.joint_deviation_arms.params["asset_cfg"] = SceneEntityCfg(
             "robot", joint_names=["zarm_[lr][1-4]_joint"]
+        )
+    if hasattr(cfg.rewards, "joint_deviation_arm_shoulder_roll"):
+        cfg.rewards.joint_deviation_arm_shoulder_roll.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=["zarm_[lr]2_joint"]
         )
     if hasattr(cfg.rewards, "joint_deviation_waists"):
         cfg.rewards.joint_deviation_waists.params["asset_cfg"] = SceneEntityCfg(
@@ -182,14 +186,37 @@ def _apply_roban_name_mapping(cfg) -> None:
 
 
 @configclass
+class RobanS17RewardsCfg(KuavoS54EnhanceRewardsCfg):
+    """AME rewards adjusted for the S17 arm mechanics and gait conventions."""
+
+    # Keep the whole-arm regularizer at the RobanS17 reference weight.
+    joint_deviation_arms = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["zarm_[lr][1-4]_joint"])},
+    )
+
+    # The shoulder-roll axes are especially prone to a visually large unilateral
+    # lift, so match LejuLab's dedicated S17 penalty.
+    joint_deviation_arm_shoulder_roll = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["zarm_[lr]2_joint"])},
+    )
+
+
+@configclass
 class RobanDepthEnhanceEnvCfg(KuavoS54EnhanceEnvCfg):
     """Training configuration for AME-Roban-Depth-Enhance."""
 
     scene: RobanDepthSceneCfg = RobanDepthSceneCfg(num_envs=2048, env_spacing=2.5)
-    rewards: KuavoS54EnhanceRewardsCfg = KuavoS54EnhanceRewardsCfg()
+    rewards: RobanS17RewardsCfg = RobanS17RewardsCfg()
 
     def __post_init__(self):
         super().__post_init__()
+        # LejuLab does not use the G1 cross-body coordination term. On S17 it
+        # can pull a shoulder away from its standing pose to match a leg joint.
+        self.rewards.joint_coordination = None
         _apply_roban_name_mapping(self)
         self.scene.height_scanner = None
         self.scene.terrain.max_init_terrain_level = 0
@@ -202,9 +229,11 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
     """Playback configuration for AME-Roban-Depth-Enhance."""
 
     scene: RobanDepthSceneCfg = RobanDepthSceneCfg(num_envs=50, env_spacing=2.5)
+    rewards: RobanS17RewardsCfg = RobanS17RewardsCfg()
 
     def __post_init__(self):
         super().__post_init__()
+        self.rewards.joint_coordination = None
         _apply_roban_name_mapping(self)
         self.scene.height_scanner = None
 

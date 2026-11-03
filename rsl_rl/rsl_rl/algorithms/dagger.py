@@ -62,17 +62,23 @@ class DAgger(Distillation):
 
         for _ in range(self.num_learning_epochs):
             for obs, _, teacher_actions, dones in self.storage.generator():
-                student_actions = self.policy.act_inference(obs)
-                behavior_loss = self.loss_fn(student_actions, teacher_actions)
-                loss = behavior_loss
-                behavior_total += behavior_loss.item()
+                # Keep master parameters in FP32; autocast only forward and loss operations.
+                with torch.amp.autocast(
+                    device_type=torch.device(self.device).type,
+                    dtype=torch.bfloat16,
+                    enabled=self.use_mixed_precision,
+                ):
+                    student_actions = self.policy.act_inference(obs)
+                    behavior_loss = self.loss_fn(student_actions, teacher_actions)
+                    loss = behavior_loss
+                    behavior_total += behavior_loss.item()
 
-                if self.velocity_loss_coef > 0 and hasattr(self.policy, "compute_auxiliary_losses"):
-                    aux_losses = self.policy.compute_auxiliary_losses(obs)
-                    velocity_loss = aux_losses.get("velocity")
-                    if velocity_loss is not None:
-                        loss = loss + self.velocity_loss_coef * velocity_loss
-                        velocity_total += velocity_loss.item()
+                    if self.velocity_loss_coef > 0 and hasattr(self.policy, "compute_auxiliary_losses"):
+                        aux_losses = self.policy.compute_auxiliary_losses(obs)
+                        velocity_loss = aux_losses.get("velocity")
+                        if velocity_loss is not None:
+                            loss = loss + self.velocity_loss_coef * velocity_loss
+                            velocity_total += velocity_loss.item()
 
                 accumulated_loss = accumulated_loss + loss
                 update_count += 1
@@ -101,8 +107,14 @@ class DAgger(Distillation):
             for step in range(returns.shape[0]):
                 obs = self.storage.observations[step]
                 target = returns[step]
-                predicted_value = self.policy.evaluate_value(obs)
-                value_loss = F.mse_loss(predicted_value, target)
+                # Keep master parameters in FP32; autocast only forward and loss operations.
+                with torch.amp.autocast(
+                    device_type=torch.device(self.device).type,
+                    dtype=torch.bfloat16,
+                    enabled=self.use_mixed_precision,
+                ):
+                    predicted_value = self.policy.evaluate_value(obs)
+                    value_loss = F.mse_loss(predicted_value, target)
                 self.value_optimizer.zero_grad()
                 value_loss.backward()
                 if self.is_multi_gpu:

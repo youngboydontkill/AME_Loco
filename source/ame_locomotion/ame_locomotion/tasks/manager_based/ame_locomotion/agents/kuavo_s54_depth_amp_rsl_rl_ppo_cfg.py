@@ -3,8 +3,8 @@
 import os
 
 from isaaclab.utils import configclass
-from isaaclab_rl.rsl_rl import RslRlPpoAlgorithmCfg
 
+from .ame_rsl_rl_ppo_cfg import AMEPpoAlgorithmCfg
 from .kuavo_s54_depth_ame_rsl_rl_ppo_cfg import (
     KuavoS54DepthActorCriticCfg,
     KuavoS54DepthAMEPPORunnerCfg,
@@ -12,7 +12,7 @@ from .kuavo_s54_depth_ame_rsl_rl_ppo_cfg import (
 
 
 @configclass
-class KuavoS54DepthAMPAlgorithmCfg(RslRlPpoAlgorithmCfg):
+class KuavoS54DepthAMPAlgorithmCfg(AMEPpoAlgorithmCfg):
     class_name: str = "PPO"
     value_loss_coef: float = 1.0
     use_clipped_value_loss: bool = True

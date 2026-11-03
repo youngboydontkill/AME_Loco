@@ -8,6 +8,13 @@ from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 
 @configclass
+class AMEPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
+    """BF16 forward/loss computation with FP32 parameters and Adam state."""
+
+    use_mixed_precision: bool = True
+
+
+@configclass
 class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 10000
@@ -22,7 +29,7 @@ class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
-    algorithm = RslRlPpoAlgorithmCfg(
+    algorithm = AMEPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,

@@ -478,8 +478,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     actions = raw_actions
                 # env stepping
                 obs, *_ = env.step(actions)
-            if args_cli.video:
                 timestep += 1
+            if args_cli.video:
                 # Exit the play loop after recording one video
                 if timestep == args_cli.video_length:
                     break
