@@ -204,6 +204,44 @@ class RobanS17RewardsCfg(KuavoS54EnhanceRewardsCfg):
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["zarm_[lr]2_joint"])},
     )
 
+    # Roban's walking task uses explicit foot-phase shaping to make forward
+    # commands produce alternating steps instead of a stationary posture.
+    alternating_contacts = RewTerm(
+        func=mdp.alternating_contacts,
+        weight=0.5,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="leg_[lr]6_link"),
+            "command_name": "base_velocity",
+            "command_threshold": 0.1,
+            "max_stance_time": 0.4,
+        },
+    )
+    feet_clearance = RewTerm(
+        func=mdp.feet_clearance_reward,
+        weight=0.5,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="leg_[lr]6_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names="leg_[lr]6_link"),
+            "target_height": 0.13,
+            "std": 0.05,
+        },
+    )
+    base_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-5.0,
+        params={"target_height": 0.77, "asset_cfg": SceneEntityCfg("robot")},
+    )
+    stand_still_without_cmd = RewTerm(
+        func=mdp.stand_still_without_cmd,
+        weight=-0.2,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=["leg_[lr][1-6]_joint", "zarm_[lr][1-4]_joint"]
+            ),
+        },
+    )
+
 
 @configclass
 class RobanDepthEnhanceEnvCfg(KuavoS54EnhanceEnvCfg):
@@ -221,6 +259,20 @@ class RobanDepthEnhanceEnvCfg(KuavoS54EnhanceEnvCfg):
         self.scene.height_scanner = None
         self.scene.terrain.max_init_terrain_level = 0
         self.events.push_robot = None
+        # Keep the Roban command space simple: forward speed and yaw rate only.
+        # Disable heading mode so the sampled yaw-rate command is not replaced
+        # by a random heading controller target.
+        command = self.commands.base_velocity
+        command.heading_command = False
+        command.rel_heading_envs = 0.0
+        command.ranges.lin_vel_x = (0.3, 1.0)
+        command.ranges.lin_vel_y = (0.0, 0.0)
+        command.ranges.ang_vel_z = (-0.3, 0.3)
+        command.ranges.heading = (0.0, 0.0)
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0
+        self.rewards.track_ang_vel_z_exp.weight = 1.0
+        self.rewards.feet_air_time.weight = 1.0
+        self.rewards.feet_air_time_variance.weight = -0.7
         self.rewards.track_lin_vel_xy_exp.params["std"] = 0.5
 
 
@@ -236,6 +288,13 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
         self.rewards.joint_coordination = None
         _apply_roban_name_mapping(self)
         self.scene.height_scanner = None
+        command = self.commands.base_velocity
+        command.heading_command = False
+        command.rel_heading_envs = 0.0
+        command.ranges.lin_vel_x = (1.0, 1.0)
+        command.ranges.lin_vel_y = (0.0, 0.0)
+        command.ranges.ang_vel_z = (0.0, 0.0)
+        command.ranges.heading = (0.0, 0.0)
 
 
 @configclass

@@ -203,6 +203,67 @@ def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
     )
 
 
+def alternating_contacts(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    command_name: str = "base_velocity",
+    command_threshold: float = 0.1,
+    max_stance_time: float = 0.4,
+) -> torch.Tensor:
+    """Encourage one-foot support during commanded locomotion."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    in_contact = contact_time > 0.0
+    single_support = (in_contact.sum(dim=1) == 1).float()
+    stance_time = contact_time.max(dim=1).values
+    time_factor = torch.clamp(1.0 - (stance_time - max_stance_time) / max_stance_time, 0.0, 1.0)
+    reward = single_support * time_factor
+    command = env.command_manager.get_command(command_name)
+    return reward * (torch.linalg.norm(command[:, :2], dim=1) > command_threshold).float()
+
+
+def feet_clearance_reward(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    target_height: float = 0.13,
+    std: float = 0.05,
+) -> torch.Tensor:
+    """Reward feet that clear a modest height while they are in swing."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    in_swing = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids] <= 0.0
+    asset: Articulation = env.scene[asset_cfg.name]
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    height_reward = torch.exp(-torch.square(foot_height - target_height) / (std**2))
+    return torch.sum(height_reward * in_swing.float(), dim=1)
+
+
+def base_height_l2(
+    env: ManagerBasedRLEnv,
+    target_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize deviation of the root link from the nominal standing height."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_link_pos_w[:, 2] - target_height)
+
+
+def stand_still_without_cmd(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_velocity",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize joint drift only when all velocity commands are near zero."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_ids = asset_cfg.joint_ids
+    deviation = torch.sum(
+        torch.abs(asset.data.joint_pos[:, joint_ids] - asset.data.default_joint_pos[:, joint_ids]), dim=1
+    )
+    command = env.command_manager.get_command(command_name)
+    stationary = (torch.linalg.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])) < 0.05
+    return deviation * stationary.float()
+
+
 """
 Feet Gait rewards.
 """

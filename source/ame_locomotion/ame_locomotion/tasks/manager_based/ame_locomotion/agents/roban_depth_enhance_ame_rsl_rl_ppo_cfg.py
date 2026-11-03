@@ -15,6 +15,10 @@ class RobanDepthEnhanceAMEPPORunnerCfg(KuavoS54DepthAMEPPORunnerCfg):
     """PPO settings for AME-Roban-Depth-Enhance-v0."""
 
     experiment_name = "roban_depth_enhance"
+    # Roban command/reward changes require a fresh optimizer state.
+    resume = False
+    load_run = None
+    load_checkpoint = None
     policy = RobanDepthActorCriticCfg(
         init_noise_std=1.0,
         actor_obs_normalization=False,
