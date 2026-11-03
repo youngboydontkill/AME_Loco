@@ -5,18 +5,62 @@ import math
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 
+from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
 from ame_locomotion.tasks.manager_based.ame_locomotion.s54.velocity_env_cfg_s54_depth import (
+    DepthObservationsCfg,
     KuavoS54DepthSceneCfg,
 )
 from ame_locomotion.tasks.manager_based.ame_locomotion.s54.velocity_env_cfg_s54_depth_enhance import (
-    KuavoS54DepthEnhanceEnvCfg,
+    KuavoS54EnhanceEnvCfg,
     KuavoS54DepthEnhanceEnvCfg_PLAY,
     KuavoS54EnhanceRewardsCfg,
 )
 from kuavo.assets.roban_s17 import ROBAN_S17_CFG
+
+
+# The all-zero S17 pose from the generic asset config leaves the feet below the
+# ground at a 0.8 m root height.  Use the standing pose shipped by LejuLab for
+# this locomotion task so the inherited base-contact termination does not reset
+# every environment on the first simulation step.
+_ROBAN_STANDING_INIT = ArticulationCfg.InitialStateCfg(
+    pos=(0.0, 0.0, 0.77),
+    rot=(1.0, 0.0, 0.0, 0.0),
+    joint_pos={
+        "waist_yaw_joint": 0.0,
+        "leg_l1_joint": -0.05033,
+        "leg_l2_joint": -0.0164,
+        "leg_l3_joint": -0.0233,
+        "leg_l4_joint": 0.155,
+        "leg_l5_joint": -0.1,
+        "leg_l6_joint": 0.0,
+        "leg_r1_joint": 0.05033,
+        "leg_r2_joint": 0.0164,
+        "leg_r3_joint": -0.0233,
+        "leg_r4_joint": 0.155,
+        "leg_r5_joint": -0.1,
+        "leg_r6_joint": 0.0,
+        "zarm_l1_joint": 0.2,
+        "zarm_l2_joint": 0.1,
+        "zarm_l3_joint": -0.2,
+        "zarm_l4_joint": -0.6,
+        "zarm_r1_joint": 0.2,
+        "zarm_r2_joint": -0.1,
+        "zarm_r3_joint": 0.2,
+        "zarm_r4_joint": -0.6,
+    },
+    joint_vel={".*": 0.0},
+)
+
+
+def _roban_robot_cfg() -> ArticulationCfg:
+    return ROBAN_S17_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot",
+        init_state=_ROBAN_STANDING_INIT,
+    )
 
 
 # The S17 URDF already pitches ``camera_base`` down by 0.27152 rad.  Apply the
@@ -47,7 +91,7 @@ _ROBAN_CAMERA_ROT = (
 class RobanDepthSceneCfg(KuavoS54DepthSceneCfg):
     """S17 scene with the physical head camera as the depth sensor."""
 
-    robot: ArticulationCfg = ROBAN_S17_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot: ArticulationCfg = _roban_robot_cfg()
     depth_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/camera_base/depth_camera",
         update_period=0.02,
@@ -72,7 +116,7 @@ class RobanDepthSceneCfg(KuavoS54DepthSceneCfg):
 def _apply_roban_name_mapping(cfg) -> None:
     """Apply S17 body, joint, action, and contact selectors."""
 
-    cfg.scene.robot = ROBAN_S17_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    cfg.scene.robot = _roban_robot_cfg()
     if cfg.scene.height_scanner is not None:
         cfg.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/waist_yaw_link"
 
@@ -114,8 +158,14 @@ def _apply_roban_name_mapping(cfg) -> None:
             "robot", joint_names=["waist_yaw_joint"]
         )
 
-    cfg.terminations.base_contact.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=["base_link", "waist_yaw_link"]
+    # LejuLab's RobanS17 task uses orientation failure as the fall detector and
+    # has no base-contact termination.  The inherited Kuavo base-contact term
+    # fires during S17 initialization because fixed head/body collision links
+    # can report a transient force before the first settled physics frame.
+    cfg.terminations.base_contact = None
+    cfg.terminations.bad_orientation = DoneTerm(
+        func=mdp.bad_orientation,
+        params={"limit_angle": 0.8, "asset_cfg": SceneEntityCfg("robot")},
     )
     if getattr(cfg.scene, "visualize_cam", None) is not None:
         cfg.scene.visualize_cam.prim_path = "{ENV_REGEX_NS}/Robot/waist_yaw_link/visualize_cam"
@@ -132,7 +182,7 @@ def _apply_roban_name_mapping(cfg) -> None:
 
 
 @configclass
-class RobanDepthEnhanceEnvCfg(KuavoS54DepthEnhanceEnvCfg):
+class RobanDepthEnhanceEnvCfg(KuavoS54EnhanceEnvCfg):
     """Training configuration for AME-Roban-Depth-Enhance."""
 
     scene: RobanDepthSceneCfg = RobanDepthSceneCfg(num_envs=2048, env_spacing=2.5)
@@ -157,3 +207,22 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
         super().__post_init__()
         _apply_roban_name_mapping(self)
         self.scene.height_scanner = None
+
+
+@configclass
+class RobanRawDepthObservationsCfg(DepthObservationsCfg):
+    """Raw camera depth observations with the same 42x42 interface."""
+
+
+@configclass
+class RobanDepthRawEnvCfg(RobanDepthEnhanceEnvCfg):
+    """Training configuration for RobanS17 with unenhanced depth input."""
+
+    observations: RobanRawDepthObservationsCfg = RobanRawDepthObservationsCfg()
+
+
+@configclass
+class RobanDepthRawEnvCfg_PLAY(RobanDepthEnhanceEnvCfg_PLAY):
+    """Playback configuration for RobanS17 with unenhanced depth input."""
+
+    observations: RobanRawDepthObservationsCfg = RobanRawDepthObservationsCfg()

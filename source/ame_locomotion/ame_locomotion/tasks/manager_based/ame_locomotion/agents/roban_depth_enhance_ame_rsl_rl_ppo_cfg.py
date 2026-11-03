@@ -23,3 +23,10 @@ class RobanDepthEnhanceAMEPPORunnerCfg(KuavoS54DepthAMEPPORunnerCfg):
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
+
+
+@configclass
+class RobanDepthRawAMEPPORunnerCfg(RobanDepthEnhanceAMEPPORunnerCfg):
+    """PPO settings for the raw-depth RobanS17 task."""
+
+    experiment_name = "roban_depth_raw"
