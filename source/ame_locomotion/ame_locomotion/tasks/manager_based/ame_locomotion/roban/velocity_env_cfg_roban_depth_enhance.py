@@ -593,6 +593,12 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
 class RobanDepthCriticCfg(DepthObservationsCfg.CriticCfg):
     """LejuLab privileged state terms plus the AME depth image."""
 
+    # ActorCriticCNNMLP extracts the depth image from the final 42 * 42 values
+    # of the flattened observation. Disable the inherited image term here and
+    # re-add it after the privileged terms below so the critic follows that
+    # same input layout.
+    depth_image = None
+
     joint_torques = ObsTerm(
         func=mdp.joint_torques,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*_joint")},
@@ -625,6 +631,10 @@ class RobanDepthCriticCfg(DepthObservationsCfg.CriticCfg):
     feet_air_times = ObsTerm(
         func=mdp.feet_air_time_obs,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="leg_[lr]6_link")},
+    )
+    depth_image_last = ObsTerm(
+        func=mdp.depth_image,
+        params={"sensor_cfg": SceneEntityCfg("depth_camera")},
     )
 
 
