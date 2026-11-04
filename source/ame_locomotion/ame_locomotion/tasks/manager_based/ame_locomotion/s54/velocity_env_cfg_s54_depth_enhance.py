@@ -176,8 +176,8 @@ class MixedEnhancedDepthObservationsCfg(DepthObservationsCfg):
                 "sensor_cfg": SceneEntityCfg("depth_camera"),
                 "checkpoint_path": EDGE_STUDENT_CHECKPOINT,
                 "enhance_probability": 0.7,
-                "noise_std": 0.0,
-                "dropout_probability": 0.0,
+                "noise_std": 0.01,
+                "dropout_probability": 0.005,
             },
         )
 

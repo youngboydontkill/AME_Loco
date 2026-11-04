@@ -12,7 +12,6 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.sensors import RayCasterCfg, TiledCameraCfg, patterns
 from isaaclab.utils import configclass
-from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
 from ame_locomotion.tasks.manager_based.ame_locomotion.s54.velocity_env_cfg_s54_depth import (
@@ -73,7 +72,7 @@ def _roban_robot_cfg() -> ArticulationCfg:
 # The S17 URDF already pitches ``camera_base`` down by 0.27152 rad.  Apply the
 # remaining fixed pitch so the optical axis is about 40 degrees below level.
 _ROBAN_CAMERA_BASE_PITCH = 0.27152
-_ROBAN_CAMERA_PITCH = math.radians(40.0) - _ROBAN_CAMERA_BASE_PITCH
+_ROBAN_CAMERA_PITCH = math.radians(30.0) - _ROBAN_CAMERA_BASE_PITCH
 _ROBAN_CAMERA_PITCH_QUAT = (
     math.cos(_ROBAN_CAMERA_PITCH / 2.0),
     0.0,
@@ -204,36 +203,32 @@ def _apply_roban_name_mapping(cfg) -> None:
     # happens to use this same natural order, but leaving this implicit would
     # let a future URDF/importer order change silently remap policy outputs.
     cfg.actions.joint_pos.preserve_order = True
-    # Restore the RobanS17 proprioceptive scales/noise ranges from LejuLab;
-    # the inherited G1 defaults scale angular and joint velocities differently.
+    # Preserve the AME encoder's proprioceptive input scale during early depth training.
     policy = cfg.observations.policy
-    policy.base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-    policy.projected_gravity = ObsTerm(
-        func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
-    )
+    policy.base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2)
+    policy.projected_gravity = ObsTerm(func=mdp.projected_gravity)
     policy.velocity_commands = ObsTerm(
         func=mdp.generated_commands, params={"command_name": "base_velocity"}
     )
     policy.joint_pos = ObsTerm(
         func=mdp.joint_pos_rel,
-        noise=Unoise(n_min=-0.05, n_max=0.05),
         params={"asset_cfg": joint_order},
     )
     policy.joint_vel = ObsTerm(
         func=mdp.joint_vel_rel,
-        noise=Unoise(n_min=-1.5, n_max=1.5),
+        scale=0.05,
         params={"asset_cfg": joint_order},
     )
     policy.actions = ObsTerm(func=mdp.last_action)
     critic = cfg.observations.critic
     critic.base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-    critic.base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+    critic.base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2)
     critic.projected_gravity = ObsTerm(func=mdp.projected_gravity)
     critic.velocity_commands = ObsTerm(
         func=mdp.generated_commands, params={"command_name": "base_velocity"}
     )
     critic.joint_pos = ObsTerm(func=mdp.joint_pos_rel, params={"asset_cfg": joint_order})
-    critic.joint_vel = ObsTerm(func=mdp.joint_vel_rel, params={"asset_cfg": joint_order})
+    critic.joint_vel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, params={"asset_cfg": joint_order})
     critic.actions = ObsTerm(func=mdp.last_action)
     for group_name in ("policy", "critic"):
         group = getattr(cfg.observations, group_name, None)
@@ -248,6 +243,7 @@ def _apply_roban_name_mapping(cfg) -> None:
 class RobanS17RewardsCfg:
     """Reward terms aligned with LejuLab-Train's RobanS17 rough task."""
 
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=1.0,
@@ -378,50 +374,35 @@ class RobanS17RewardsCfg:
 
 @configclass
 class RobanS17EventCfg(CNNMLPDepthRLEventCfg):
-    """RobanS17 dynamics randomization aligned with LejuLab-Train."""
+    """Reduced RobanS17 randomization for early depth-policy training."""
 
     add_joint_default_pos = EventTerm(
         func=mdp.randomize_joint_default_pos,
         mode="startup",
         params={
             "asset_cfg": ROBAN_S17_CFG.preserve_joint_order,
-            "pos_distribution_params": (-0.1, 0.1),
+            "pos_distribution_params": (-0.02, 0.02),
             "operation": "add",
         },
     )
-    add_base_mass = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base_link"),
-            "mass_distribution_params": (-5.0, 5.0),
-            "operation": "add",
-        },
-    )
+    add_base_mass = None
     scale_link_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=["leg_.*_link", "zarm_.*_link"]),
-            "mass_distribution_params": (0.8, 1.2),
+            "mass_distribution_params": (0.95, 1.05),
             "operation": "scale",
         },
     )
-    base_com = EventTerm(
-        func=mdp.randomize_rigid_body_com,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="base_link"),
-            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
-        },
-    )
+    base_com = None
     scale_actuator_gains = EventTerm(
         func=mdp.randomize_actuator_gains,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*_joint"),
-            "stiffness_distribution_params": (0.8, 1.2),
-            "damping_distribution_params": (0.8, 1.2),
+            "stiffness_distribution_params": (0.9, 1.1),
+            "damping_distribution_params": (0.9, 1.1),
             "operation": "scale",
         },
     )
@@ -430,8 +411,8 @@ class RobanS17EventCfg(CNNMLPDepthRLEventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*_joint"),
-            "friction_distribution_params": (0.8, 1.2),
-            "armature_distribution_params": (0.5, 1.5),
+            "friction_distribution_params": (0.9, 1.1),
+            "armature_distribution_params": (0.8, 1.2),
             "operation": "scale",
         },
     )
@@ -439,21 +420,21 @@ class RobanS17EventCfg(CNNMLPDepthRLEventCfg):
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.7, 0.7), "y": (-0.7, 0.7), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
-                "x": (-0.1, 0.1),
-                "y": (-0.1, 0.1),
-                "z": (0.0, 0.1),
-                "roll": (-0.3, 0.3),
-                "pitch": (-0.3, 0.3),
-                "yaw": (-0.3, 0.3),
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
             },
         },
     )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
         mode="reset",
-        params={"position_range": (-0.1, 0.1), "velocity_range": (0.0, 0.0)},
+        params={"position_range": (-0.03, 0.03), "velocity_range": (0.0, 0.0)},
     )
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque_stochastic,
@@ -461,9 +442,9 @@ class RobanS17EventCfg(CNNMLPDepthRLEventCfg):
         interval_range_s=(0.0, 0.0),
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base_link"),
-            "force_range": {"x": (-1000.0, 1000.0), "y": (-1000.0, 1000.0), "z": (-600.0, 600.0)},
-            "torque_range": {"x": (-20.0, 20.0), "y": (-20.0, 20.0), "z": (-15.0, 15.0)},
-            "probability": 0.002,
+            "force_range": {"x": (-200.0, 200.0), "y": (-200.0, 200.0), "z": (-100.0, 100.0)},
+            "torque_range": {"x": (-5.0, 5.0), "y": (-5.0, 5.0), "z": (-5.0, 5.0)},
+            "probability": 0.0005,
         },
     )
     physics_material = EventTerm(
@@ -471,9 +452,9 @@ class RobanS17EventCfg(CNNMLPDepthRLEventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 2.0),
-            "dynamic_friction_range": (0.3, 2.0),
-            "restitution_range": (0.0, 1.0),
+            "static_friction_range": (0.7, 1.2),
+            "dynamic_friction_range": (0.7, 1.2),
+            "restitution_range": (0.0, 0.05),
             "num_buckets": 64,
             "make_consistent": True,
         },
@@ -501,13 +482,18 @@ class RobanDepthEnhanceEnvCfg(KuavoS54EnhanceEnvCfg):
         self.scene.terrain.physics_material = sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="average",
             restitution_combine_mode="average",
-            static_friction=0.5,
-            dynamic_friction=0.5,
-            restitution=0.5,
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
         )
         self.scene.height_scanner = None
         self.scene.terrain.max_init_terrain_level = 0
         self.scene.contact_forces.update_period = self.sim.dt
+        self.events.randomize_depth_camera.params["position_range"] = {
+            "x": (0.0, 0.001),
+            "y": (-0.005, 0.005),
+            "z": (-0.001, 0.001),
+        }
         self.decimation = 4
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
@@ -547,6 +533,14 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
         self.scene.terrain.terrain_generator.curriculum = False
         self.scene.terrain.terrain_generator.num_rows = 5
         self.scene.terrain.terrain_generator.num_cols = 5
+        self.scene.terrain.physics_material = sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="average",
+            restitution_combine_mode="average",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        )
+        self.sim.physics_material = self.scene.terrain.physics_material
         self.scene.height_scanner = None
         # Match training evaluation starts with the level-zero terrain.  The
         # generic Kuavo play config leaves this as ``None``, which lets a

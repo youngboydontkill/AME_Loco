@@ -29,7 +29,7 @@ class RobanDepthEnhanceAMEPPORunnerCfg(KuavoS54DepthAMEPPORunnerCfg):
     load_checkpoint = None
     policy = RobanDepthActorCriticCfg(
         init_noise_std=1.0,
-        noise_std_type="log",
+        noise_std_type="scalar",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
@@ -76,7 +76,7 @@ class RobanDepthRawMLPAMEPPORunnerCfg(RobanDepthRawAMEPPORunnerCfg):
     experiment_name = "mlp_roban_depth_raw"
     policy = RobanDepthMLPActorCriticCfg(
         init_noise_std=1.0,
-        noise_std_type="log",
+        noise_std_type="scalar",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
@@ -92,7 +92,7 @@ class RobanDepthEnhanceMLPAMEPPORunnerCfg(RobanDepthEnhanceAMEPPORunnerCfg):
     experiment_name = "mlp_roban_depth_enhance"
     policy = RobanDepthMLPActorCriticCfg(
         init_noise_std=1.0,
-        noise_std_type="log",
+        noise_std_type="scalar",
         actor_obs_normalization=False,
         critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
