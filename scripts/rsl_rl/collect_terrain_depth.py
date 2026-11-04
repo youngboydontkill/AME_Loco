@@ -59,6 +59,13 @@ parser.add_argument("--seed", type=int, default=1)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 
+# Isaac Lab and AME config imports can load PhysX modules, so initialize the
+# SimulationApp before importing the terrain configuration package.
+sys.argv = [sys.argv[0]] + hydra_args
+args_cli.enable_cameras = True
+app_launcher = AppLauncher(args_cli)
+simulation_app = app_launcher.app
+
 from ame_locomotion.tasks.manager_based.ame_locomotion.terrains.finetune_terrain_cfg import (
     FINETUNE_ROUGH_TERRAINS_CFG,
 )
@@ -74,21 +81,19 @@ def get_terrain_template(name: str):
 if args_cli.list_terrains:
     for terrain_name in sorted(set(ROUGH_TERRAINS_CFG.sub_terrains) | set(FINETUNE_ROUGH_TERRAINS_CFG.sub_terrains)):
         print(terrain_name)
+    simulation_app.close()
     raise SystemExit(0)
 
 if args_cli.show_terrain_params:
     template = get_terrain_template(args_cli.terrain)
     if template is None:
+        simulation_app.close()
         raise SystemExit(f"Unknown terrain {args_cli.terrain!r}; use --list-terrains to see available names.")
     for field in fields(template):
         if field.name != "function":
             print(f"{field.name}={getattr(template, field.name)!r}")
+    simulation_app.close()
     raise SystemExit(0)
-
-sys.argv = [sys.argv[0]] + hydra_args
-args_cli.enable_cameras = True
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
 
 import gymnasium as gym
 import numpy as np
