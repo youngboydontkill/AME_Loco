@@ -500,7 +500,10 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             self.commands.base_velocity.ranges.heading = (0.0, 0.0)
             
             # Only apply this G1-specific reward preset to configs that define it.
-            if hasattr(self.rewards, "termination_penalty"):
+            has_g1_rewards = hasattr(self.rewards, "termination_penalty") and hasattr(
+                self.rewards, "feet_air_time_variance"
+            )
+            if has_g1_rewards:
                 self.rewards.termination_penalty.weight = -200.0
                 self.rewards.track_lin_vel_xy_exp.weight = 2.0
                 self.rewards.track_ang_vel_z_exp.weight = 3.0
@@ -538,7 +541,10 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
                 self.observations.policy.height_scan.params["noise"] = False
             # Reward Weights
             # Custom robot reward configs may intentionally omit G1-only terms.
-            if hasattr(self.rewards, "termination_penalty"):
+            has_g1_rewards = hasattr(self.rewards, "termination_penalty") and hasattr(
+                self.rewards, "feet_air_time_variance"
+            )
+            if has_g1_rewards:
                 self.rewards.termination_penalty.weight = -200
                 self.rewards.track_lin_vel_xy_exp.weight = 2.0
                 self.rewards.track_ang_vel_z_exp.weight = 3.0

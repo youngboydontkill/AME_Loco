@@ -24,7 +24,8 @@ def _make_scene(num_envs: int) -> _g1_cfg.MySceneCfg:
 def _apply_s54_name_mapping(cfg) -> None:
     """Replace every G1-specific joint/body selector with its S54 equivalent."""
     cfg.scene.robot = KUAVO_S54_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    cfg.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/waist_yaw_link"
+    if cfg.scene.height_scanner is not None:
+        cfg.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/waist_yaw_link"
 
     for event_name in ("add_base_mass", "base_com", "base_external_force_torque"):
         event = getattr(cfg.events, event_name, None)
@@ -33,50 +34,51 @@ def _apply_s54_name_mapping(cfg) -> None:
                 "robot", body_names="waist_yaw_link"
             )
 
-    cfg.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=["(?!leg_[lr][56]_link$).*"]
-    )
     foot_body = "leg_[lr]6_link"
-    cfg.rewards.feet_air_time.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=foot_body
-    )
-    cfg.rewards.feet_air_time_variance.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=foot_body
-    )
-    cfg.rewards.feet_slide.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=foot_body
-    )
-    cfg.rewards.feet_slide.params["asset_cfg"] = SceneEntityCfg(
-        "robot", body_names=foot_body
-    )
-    cfg.rewards.feet_stumble.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces", body_names=foot_body
-    )
-    cfg.rewards.feet_too_near.params["asset_cfg"] = SceneEntityCfg(
-        "robot", body_names=foot_body
-    )
+    if getattr(cfg.rewards, "undesired_contacts", None) is not None:
+        cfg.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
+            "contact_forces", body_names=["(?!leg_[lr][56]_link$).*"]
+        )
+    for reward_name in ("feet_air_time", "feet_air_time_variance", "feet_stumble"):
+        reward = getattr(cfg.rewards, reward_name, None)
+        if reward is not None:
+            reward.params["sensor_cfg"] = SceneEntityCfg("contact_forces", body_names=foot_body)
+    for reward_name in ("feet_slide",):
+        reward = getattr(cfg.rewards, reward_name, None)
+        if reward is not None:
+            reward.params["sensor_cfg"] = SceneEntityCfg("contact_forces", body_names=foot_body)
+            reward.params["asset_cfg"] = SceneEntityCfg("robot", body_names=foot_body)
+    feet_too_near = getattr(cfg.rewards, "feet_too_near", None)
+    if feet_too_near is not None:
+        feet_too_near.params["asset_cfg"] = SceneEntityCfg("robot", body_names=foot_body)
 
-    cfg.rewards.joint_coordination.params["coord_joints"] = [
-        ["leg_l3_joint", "zarm_r1_joint"],
-        ["leg_r3_joint", "zarm_l1_joint"],
-    ]
-    cfg.rewards.joint_deviation_hip.params["asset_cfg"] = SceneEntityCfg(
-        "robot", joint_names=["leg_[lr][12]_joint"]
-    )
-    cfg.rewards.joint_deviation_arms.params["asset_cfg"] = SceneEntityCfg(
-        "robot", joint_names=["zarm_[lr][1-7]_joint"]
-    )
-    cfg.rewards.joint_deviation_waists.params["asset_cfg"] = SceneEntityCfg(
-        "robot", joint_names=["waist_yaw_joint"]
-    )
+    joint_coordination = getattr(cfg.rewards, "joint_coordination", None)
+    if joint_coordination is not None:
+        joint_coordination.params["coord_joints"] = [
+            ["leg_l3_joint", "zarm_r1_joint"],
+            ["leg_r3_joint", "zarm_l1_joint"],
+        ]
+    joint_deviation_hip = getattr(cfg.rewards, "joint_deviation_hip", None)
+    if joint_deviation_hip is not None:
+        joint_deviation_hip.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=["leg_[lr][12]_joint"]
+        )
+    joint_deviation_arms = getattr(cfg.rewards, "joint_deviation_arms", None)
+    if joint_deviation_arms is not None:
+        joint_deviation_arms.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=["zarm_[lr][1-7]_joint"]
+        )
+    joint_deviation_waists = getattr(cfg.rewards, "joint_deviation_waists", None)
+    if joint_deviation_waists is not None:
+        joint_deviation_waists.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=["waist_yaw_joint"]
+        )
 
-    cfg.terminations.base_contact.params["sensor_cfg"] = SceneEntityCfg(
-        "contact_forces",
-        body_names=[
-            "base_link",
-            "waist_yaw_link",
-        ],
-    )
+    base_contact = getattr(cfg.terminations, "base_contact", None)
+    if base_contact is not None:
+        base_contact.params["sensor_cfg"] = SceneEntityCfg(
+            "contact_forces", body_names=["base_link", "waist_yaw_link"]
+        )
 
     visualize_cam = getattr(cfg.scene, "visualize_cam", None)
     if visualize_cam is not None:
