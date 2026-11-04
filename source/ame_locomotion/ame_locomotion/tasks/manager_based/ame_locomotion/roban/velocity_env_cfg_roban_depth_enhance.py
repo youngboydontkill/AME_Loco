@@ -102,7 +102,7 @@ class RobanDepthSceneCfg(KuavoS54DepthSceneCfg):
     Feet_L_scanner = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/leg_l6_link",
         offset=RayCasterCfg.OffsetCfg(pos=(0.05, 0.0, 20.0)),
-        attach_yaw_only=True,
+        ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=[0.2, 0.05]),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
@@ -110,7 +110,7 @@ class RobanDepthSceneCfg(KuavoS54DepthSceneCfg):
     Feet_R_scanner = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/leg_r6_link",
         offset=RayCasterCfg.OffsetCfg(pos=(0.05, 0.0, 20.0)),
-        attach_yaw_only=True,
+        ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=[0.2, 0.05]),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],

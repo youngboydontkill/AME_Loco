@@ -84,7 +84,7 @@ gym.register(
 )
 
 gym.register(
-    id="MLP-Roban_Depth-Enhance-v0",
+    id="MLP-Roban-Depth-Enhance-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
@@ -96,7 +96,7 @@ gym.register(
 )
 
 gym.register(
-    id="MLP-Roban_Depth-Enhance-Play-v0",
+    id="MLP-Roban-Depth-Enhance-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={

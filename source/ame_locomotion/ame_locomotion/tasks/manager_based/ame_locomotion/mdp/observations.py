@@ -9,8 +9,6 @@ if TYPE_CHECKING:
 from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.managers.manager_base import ManagerTermBase
-from isaaclab.managers.manager_term_cfg import ObservationTermCfg
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
@@ -250,45 +248,34 @@ def feet_air_time_obs(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch
     return sensor.data.current_air_time[:, sensor_cfg.body_ids]
 
 
-class rigid_body_masses(ManagerTermBase):
+def rigid_body_masses(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Expose randomized selected body masses to the privileged critic."""
 
-    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
-        super().__init__(cfg, env)
-        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
-        self.asset = env.scene[self.asset_cfg.name]
-
-    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
-        return self.asset.root_physx_view.get_masses()[:, self.asset_cfg.body_ids].to(env.device)
+    asset = env.scene[asset_cfg.name]
+    return asset.root_physx_view.get_masses()[:, asset_cfg.body_ids].to(env.device)
 
 
-class rigid_body_material(ManagerTermBase):
+def rigid_body_material(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Expose selected rigid shape material coefficients to the critic."""
 
-    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
-        super().__init__(cfg, env)
-        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
-        self.asset = env.scene[self.asset_cfg.name]
-        body_ids = list(range(self.asset.num_bodies)) if self.asset_cfg.body_ids == slice(None) else list(self.asset_cfg.body_ids)
+    asset = env.scene[asset_cfg.name]
+    body_ids = list(range(asset.num_bodies)) if asset_cfg.body_ids == slice(None) else list(asset_cfg.body_ids)
+    cache = getattr(env, "_ame_rigid_body_material_shape_ids", {})
+    cache_key = (asset_cfg.name, tuple(body_ids))
+    if cache_key not in cache:
         shapes_per_body = []
-        for link_path in self.asset.root_physx_view.link_paths[0]:
-            body_view = self.asset._physics_sim_view.create_rigid_body_view(link_path)
+        for link_path in asset.root_physx_view.link_paths[0]:
+            body_view = asset._physics_sim_view.create_rigid_body_view(link_path)
             shapes_per_body.append(body_view.max_shapes)
-        self.shape_ids = [sum(shapes_per_body[:body_id]) for body_id in body_ids]
+        cache[cache_key] = [sum(shapes_per_body[:body_id]) for body_id in body_ids]
+        env._ame_rigid_body_material_shape_ids = cache
+    material = asset.root_physx_view.get_material_properties()
+    return material[:, cache[cache_key]].reshape(env.num_envs, -1).to(env.device)
 
-    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
-        material = self.asset.root_physx_view.get_material_properties()
-        return material[:, self.shape_ids].reshape(env.num_envs, -1).to(env.device)
 
-
-class base_com(ManagerTermBase):
+def base_com(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Expose selected body center-of-mass offsets to the privileged critic."""
 
-    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
-        super().__init__(cfg, env)
-        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
-        self.asset = env.scene[self.asset_cfg.name]
-
-    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
-        coms = self.asset.root_physx_view.get_coms()[:, self.asset_cfg.body_ids, :3].to(env.device)
-        return coms.squeeze(1)
+    asset = env.scene[asset_cfg.name]
+    coms = asset.root_physx_view.get_coms()[:, asset_cfg.body_ids, :3].to(env.device)
+    return coms.squeeze(1)
