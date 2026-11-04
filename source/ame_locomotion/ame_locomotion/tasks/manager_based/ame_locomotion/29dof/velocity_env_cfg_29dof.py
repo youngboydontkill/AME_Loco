@@ -499,27 +499,29 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             }
             self.commands.base_velocity.ranges.heading = (0.0, 0.0)
             
-            self.rewards.termination_penalty.weight = -200.0
-            self.rewards.track_lin_vel_xy_exp.weight = 2.0
-            self.rewards.track_ang_vel_z_exp.weight = 3.0
-            self.rewards.ang_vel_xy_l2.weight = -0.05
-            self.rewards.undesired_contacts.weight = -1.0
-            self.rewards.dof_torques_l2.weight = -1.5e-7
-            self.rewards.dof_acc_l2.weight = -1.25e-7
-            self.rewards.dof_vel_l2.weight = -0.001
-            self.rewards.dof_pos_limits.weight = -1.0
-            self.rewards.dof_torques_limits.weight = -0.05
-            self.rewards.action_rate_l2.weight = -0.05
-            self.rewards.flat_orientation_l2.weight = -5.0
-            self.rewards.feet_air_time.weight = 0.5
-            self.rewards.feet_air_time_variance.weight = -2.0
-            self.rewards.feet_slide.weight = -0.3
-            self.rewards.feet_stumble.weight = -5.0
-            self.rewards.feet_too_near.weight = -5.0
-            self.rewards.joint_coordination.weight = -0.5
-            self.rewards.joint_deviation_hip.weight = -0.1
-            self.rewards.joint_deviation_arms.weight = -0.3
-            self.rewards.joint_deviation_waists.weight = -1.0
+            # Only apply this G1-specific reward preset to configs that define it.
+            if hasattr(self.rewards, "termination_penalty"):
+                self.rewards.termination_penalty.weight = -200.0
+                self.rewards.track_lin_vel_xy_exp.weight = 2.0
+                self.rewards.track_ang_vel_z_exp.weight = 3.0
+                self.rewards.ang_vel_xy_l2.weight = -0.05
+                self.rewards.undesired_contacts.weight = -1.0
+                self.rewards.dof_torques_l2.weight = -1.5e-7
+                self.rewards.dof_acc_l2.weight = -1.25e-7
+                self.rewards.dof_vel_l2.weight = -0.001
+                self.rewards.dof_pos_limits.weight = -1.0
+                self.rewards.dof_torques_limits.weight = -0.05
+                self.rewards.action_rate_l2.weight = -0.05
+                self.rewards.flat_orientation_l2.weight = -5.0
+                self.rewards.feet_air_time.weight = 0.5
+                self.rewards.feet_air_time_variance.weight = -2.0
+                self.rewards.feet_slide.weight = -0.3
+                self.rewards.feet_stumble.weight = -5.0
+                self.rewards.feet_too_near.weight = -5.0
+                self.rewards.joint_coordination.weight = -0.5
+                self.rewards.joint_deviation_hip.weight = -0.1
+                self.rewards.joint_deviation_arms.weight = -0.3
+                self.rewards.joint_deviation_waists.weight = -1.0
         else:
             # Randomization
             self.events.push_robot = None
@@ -535,27 +537,29 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             if self.observations.policy.height_scan is not None:
                 self.observations.policy.height_scan.params["noise"] = False
             # Reward Weights
-            self.rewards.termination_penalty.weight = -200
-            self.rewards.track_lin_vel_xy_exp.weight = 2.0
-            self.rewards.track_ang_vel_z_exp.weight = 3.0
-            self.rewards.ang_vel_xy_l2.weight = -0.05
-            self.rewards.undesired_contacts.weight = -1.0
-            self.rewards.dof_torques_l2.weight = -1.5e-7
-            self.rewards.dof_acc_l2.weight = -1.25e-7
-            self.rewards.dof_vel_l2.weight = -0.001
-            self.rewards.dof_pos_limits.weight = -1.0
-            self.rewards.dof_torques_limits.weight = -0.01
-            self.rewards.action_rate_l2.weight = -0.01
-            self.rewards.flat_orientation_l2.weight = -2.0
-            self.rewards.feet_air_time.weight = 0.25
-            self.rewards.feet_air_time_variance.weight = -0.7
-            self.rewards.feet_slide.weight = -0.1
-            self.rewards.feet_stumble.weight = -2.0
-            self.rewards.feet_too_near.weight = -1.0
-            self.rewards.joint_coordination.weight = -0.2
-            self.rewards.joint_deviation_hip.weight = -0.1
-            self.rewards.joint_deviation_arms.weight = -0.3
-            self.rewards.joint_deviation_waists.weight = -1.0
+            # Custom robot reward configs may intentionally omit G1-only terms.
+            if hasattr(self.rewards, "termination_penalty"):
+                self.rewards.termination_penalty.weight = -200
+                self.rewards.track_lin_vel_xy_exp.weight = 2.0
+                self.rewards.track_ang_vel_z_exp.weight = 3.0
+                self.rewards.ang_vel_xy_l2.weight = -0.05
+                self.rewards.undesired_contacts.weight = -1.0
+                self.rewards.dof_torques_l2.weight = -1.5e-7
+                self.rewards.dof_acc_l2.weight = -1.25e-7
+                self.rewards.dof_vel_l2.weight = -0.001
+                self.rewards.dof_pos_limits.weight = -1.0
+                self.rewards.dof_torques_limits.weight = -0.01
+                self.rewards.action_rate_l2.weight = -0.01
+                self.rewards.flat_orientation_l2.weight = -2.0
+                self.rewards.feet_air_time.weight = 0.25
+                self.rewards.feet_air_time_variance.weight = -0.7
+                self.rewards.feet_slide.weight = -0.1
+                self.rewards.feet_stumble.weight = -2.0
+                self.rewards.feet_too_near.weight = -1.0
+                self.rewards.joint_coordination.weight = -0.2
+                self.rewards.joint_deviation_hip.weight = -0.1
+                self.rewards.joint_deviation_arms.weight = -0.3
+                self.rewards.joint_deviation_waists.weight = -1.0
         
 
 @configclass
