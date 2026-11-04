@@ -9,7 +9,9 @@ if TYPE_CHECKING:
 from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sensors import RayCaster
+from isaaclab.managers.manager_base import ManagerTermBase
+from isaaclab.managers.manager_term_cfg import ObservationTermCfg
+from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 
@@ -189,3 +191,104 @@ def depth_image(
     depth = torch.clamp(depth, min=min_depth, max=max_depth)
     depth = 2.0 * (depth - min_depth) / (max_depth - min_depth) - 1.0
     return depth.reshape(depth.shape[0], -1)
+
+
+def joint_torques(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.applied_torque[:, asset_cfg.joint_ids]
+
+
+def joint_accs(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.joint_acc[:, asset_cfg.joint_ids]
+
+
+def feet_lin_vel(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :].flatten(1)
+
+
+def feet_contact_force(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    return sensor.data.net_forces_w[:, sensor_cfg.body_ids, :].flatten(1)
+
+
+def action_delay(
+    env: ManagerBasedEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    actuators_names: str = "motor",
+) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.actuators[actuators_names].positions_delay_buffer.time_lags.float().to(env.device).unsqueeze(1)
+
+
+def push_force(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset._external_force_b[:, asset_cfg.body_ids, :].flatten(1)
+
+
+def push_torque(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset._external_torque_b[:, asset_cfg.body_ids, :].flatten(1)
+
+
+def feet_heights_bipeds(
+    env: ManagerBasedEnv,
+    sensor_cfg1: SceneEntityCfg,
+    sensor_cfg2: SceneEntityCfg,
+) -> torch.Tensor:
+    heights = []
+    for sensor_cfg in (sensor_cfg1, sensor_cfg2):
+        sensor = env.scene[sensor_cfg.name]
+        height = sensor.data.pos_w[:, 2] - sensor.data.ray_hits_w[..., 2].mean(dim=-1)
+        heights.append(torch.nan_to_num(height - 0.02, nan=0.0, posinf=0.0, neginf=0.0).clamp(min=0.0))
+    return torch.stack(heights, dim=-1).flatten(1)
+
+
+def feet_air_time_obs(env: ManagerBasedEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    return sensor.data.current_air_time[:, sensor_cfg.body_ids]
+
+
+class rigid_body_masses(ManagerTermBase):
+    """Expose randomized selected body masses to the privileged critic."""
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
+        self.asset = env.scene[self.asset_cfg.name]
+
+    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
+        return self.asset.root_physx_view.get_masses()[:, self.asset_cfg.body_ids].to(env.device)
+
+
+class rigid_body_material(ManagerTermBase):
+    """Expose selected rigid shape material coefficients to the critic."""
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
+        self.asset = env.scene[self.asset_cfg.name]
+        body_ids = list(range(self.asset.num_bodies)) if self.asset_cfg.body_ids == slice(None) else list(self.asset_cfg.body_ids)
+        shapes_per_body = []
+        for link_path in self.asset.root_physx_view.link_paths[0]:
+            body_view = self.asset._physics_sim_view.create_rigid_body_view(link_path)
+            shapes_per_body.append(body_view.max_shapes)
+        self.shape_ids = [sum(shapes_per_body[:body_id]) for body_id in body_ids]
+
+    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
+        material = self.asset.root_physx_view.get_material_properties()
+        return material[:, self.shape_ids].reshape(env.num_envs, -1).to(env.device)
+
+
+class base_com(ManagerTermBase):
+    """Expose selected body center-of-mass offsets to the privileged critic."""
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        self.asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
+        self.asset = env.scene[self.asset_cfg.name]
+
+    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
+        coms = self.asset.root_physx_view.get_coms()[:, self.asset_cfg.body_ids, :3].to(env.device)
+        return coms.squeeze(1)

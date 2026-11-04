@@ -7,11 +7,13 @@ import math
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import RewardTermCfg
+from isaaclab.managers.manager_base import ManagerTermBase
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.warp import raycast_mesh
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 """
 Joint penalties.
@@ -99,6 +101,55 @@ def knee_backward_swing_l2(
 """
 Feet rewards.
 """
+
+
+def feet_air_time_clip(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    threshold_min: float,
+    threshold_max: float,
+    command_threshold: float,
+) -> torch.Tensor:
+    """LejuLab Roban reward for bounded swing time on commanded steps."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    air_time = (last_air_time - threshold_min) * first_contact
+    air_time = torch.clamp(air_time, min=0.0, max=threshold_max - threshold_min)
+    reward = torch.sum(air_time, dim=1)
+    command = env.command_manager.get_command(command_name)
+    return reward * (torch.linalg.norm(command[:, :2], dim=1) > command_threshold)
+
+
+def feet_descent_velocity(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    height_threshold: float = 0.10,
+) -> torch.Tensor:
+    """LejuLab Roban penalty for fast descending feet close to the ground."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    in_contact = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids] > 0.0
+    asset: Articulation = env.scene[asset_cfg.name]
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    foot_velocity_z = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, 2]
+    active = (~in_contact) & (foot_height < height_threshold) & (foot_velocity_z < 0.0)
+    return torch.sum(torch.abs(foot_velocity_z) * active.float(), dim=1)
+
+
+def contact_forces(
+    env: ManagerBasedRLEnv,
+    threshold: float,
+    sensor_cfg: SceneEntityCfg,
+    violation_max: float = torch.inf,
+) -> torch.Tensor:
+    """LejuLab Roban penalty for excessive foot contact force."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force_history = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids]
+    peak_force = torch.max(torch.norm(force_history, dim=-1), dim=1)[0]
+    violation = torch.clamp(peak_force - threshold, min=0.0, max=violation_max)
+    return torch.sum(violation, dim=1)
 
 
 def feet_stumble(
@@ -210,16 +261,19 @@ def alternating_contacts(
     command_threshold: float = 0.1,
     max_stance_time: float = 0.4,
 ) -> torch.Tensor:
-    """Encourage one-foot support during commanded locomotion."""
+    """LejuLab Roban reward for single-leg stance, with time decay."""
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
-    in_contact = contact_time > 0.0
-    single_support = (in_contact.sum(dim=1) == 1).float()
-    stance_time = contact_time.max(dim=1).values
-    time_factor = torch.clamp(1.0 - (stance_time - max_stance_time) / max_stance_time, 0.0, 1.0)
-    reward = single_support * time_factor
-    command = env.command_manager.get_command(command_name)
-    return reward * (torch.linalg.norm(command[:, :2], dim=1) > command_threshold).float()
+    is_contact = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids] > 0.0
+    contact_count = is_contact.int().sum(dim=1)
+    single_support = (contact_count == 1).float()
+    contact_times = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    longest_stance = contact_times.max(dim=1).values
+    time_factor = torch.clamp(1.0 - (longest_stance - max_stance_time) / max_stance_time, 0.0, 1.0)
+    reward = single_support * time_factor - 0.1 * (contact_count == 0).float()
+    if command_name is not None:
+        command = env.command_manager.get_command(command_name)
+        reward *= (torch.linalg.norm(command[:, :2], dim=1) > command_threshold).float()
+    return reward
 
 
 def feet_clearance_reward(
@@ -262,6 +316,46 @@ def stand_still_without_cmd(
     command = env.command_manager.get_command(command_name)
     stationary = (torch.linalg.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])) < 0.05
     return deviation * stationary.float()
+
+
+def stand_still_without_cmd_nominal(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_velocity",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """LejuLab variant that measures standing drift from the unrandomized pose."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    nominal = getattr(asset.data, "default_joint_pos_nominal", asset.data.default_joint_pos[0])
+    joint_ids = asset_cfg.joint_ids
+    deviation = torch.sum(torch.abs(asset.data.joint_pos[:, joint_ids] - nominal[joint_ids]), dim=1)
+    command = env.command_manager.get_command(command_name)
+    standing = (torch.linalg.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])) < 0.05
+    return deviation * standing.float()
+
+
+def joint_power_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """LejuLab Roban penalty on absolute mechanical joint power."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    power = asset.data.applied_torque[:, asset_cfg.joint_ids] * asset.data.joint_vel[:, asset_cfg.joint_ids]
+    return torch.sum(torch.abs(power), dim=1)
+
+
+class action_smoothness_l2(ManagerTermBase):
+    """LejuLab Roban second-order action difference penalty."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        self.prev_prev_action = None
+
+    def __call__(self, env: ManagerBasedEnv) -> torch.Tensor:
+        if self.prev_prev_action is None:
+            self.prev_prev_action = env.action_manager.prev_action.clone()
+        reward = torch.sum(
+            torch.square(env.action_manager.action - 2.0 * env.action_manager.prev_action + self.prev_prev_action),
+            dim=1,
+        )
+        self.prev_prev_action = env.action_manager.prev_action.clone()
+        return reward
 
 
 """
