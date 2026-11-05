@@ -255,7 +255,7 @@ class RobanS17RewardsCfg:
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     alive = RewTerm(func=mdp.is_alive, weight=0.15)
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.8)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     dof_power_l2 = RewTerm(func=mdp.joint_power_l2, weight=-5.0e-6)
@@ -342,7 +342,7 @@ class RobanS17RewardsCfg:
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.1,
+        weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["zarm_.*"])},
     )
     joint_deviation_arm_shouler_roll = RewTerm(
@@ -529,6 +529,14 @@ class RobanDepthEnhanceEnvCfg_PLAY(KuavoS54DepthEnhanceEnvCfg_PLAY):
         else:
             self.observations = RobanEnhancedDepthObservationsCfg()
         _apply_roban_name_mapping(self)
+        # Keep playback commands limited to forward speed and yaw rate.
+        command = self.commands.base_velocity
+        command.heading_command = False
+        command.rel_heading_envs = 0.0
+        command.ranges.lin_vel_x = (0.8, 0.8)
+        command.ranges.lin_vel_y = (0.0, 0.0)
+        command.ranges.ang_vel_z = (-0.0, 0.0)
+        command.ranges.heading = (0.0, 0.0)
         self.scene.terrain.terrain_generator = copy.deepcopy(ROBAN_ROUGH_TERRAINS_CFG)
         self.scene.terrain.terrain_generator.curriculum = False
         self.scene.terrain.terrain_generator.num_rows = 5
